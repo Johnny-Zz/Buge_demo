@@ -822,6 +822,10 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
           allCourses={courses}
           selectedDate={selectedCalendarDate}
           onSelectDate={setSelectedCalendarDate}
+          onNavigateToDate={(date) => {
+            setSelectedAgentDate(date)
+            setViewMode('agent')
+          }}
         />
       )}
 
@@ -1541,7 +1545,7 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
             }
             
             if (courseConflict) {
-              setManualAddConflictError(`时间冲突：与课程【${courseConflict.name}】(${courseConflict.startTime}-${courseConflict.endTime}) 重叠`)
+              setManualAddConflictError(`时间冲突：与课程【${courseConflict.name}】(${courseConflict.startTime}-${courseConflict.endTime}) 重��`)
               return
             }
             
@@ -1612,13 +1616,15 @@ function CalendarView({
   courses,
   allCourses,
   selectedDate,
-  onSelectDate
+  onSelectDate,
+  onNavigateToDate
 }: {
   tasks: Task[]
   courses: Course[]
   allCourses: Course[]
   selectedDate: string | null
   onSelectDate: (date: string | null) => void
+  onNavigateToDate?: (date: string) => void
 }) {
   const [currentMonth, setCurrentMonth] = useState(() => {
     const now = new Date()
@@ -1695,7 +1701,7 @@ function CalendarView({
 
   const daysInMonth = getDaysInMonth(currentMonth.year, currentMonth.month)
   const firstDay = getFirstDayOfMonth(currentMonth.year, currentMonth.month)
-  const weekDays = ['日', '一', '二', '��', '四', '五', '六']
+  const weekDays = ['日', '一', '二', '三', '四', '五', '六']
   const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
 
   // Navigate months
@@ -1810,6 +1816,7 @@ function CalendarView({
               <button
                 key={day}
                 onClick={() => onSelectDate(isSelected ? null : dateStr)}
+                onDoubleClick={() => onNavigateToDate?.(dateStr)}
                 className={cn(
                   "aspect-square bg-[#121212] flex flex-col items-center justify-center gap-1 transition-all relative",
                   isSelected && "bg-indigo-500/20 ring-1 ring-indigo-500/50",

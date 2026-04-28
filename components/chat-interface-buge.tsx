@@ -1498,27 +1498,55 @@ function CalendarView({
     return `${month}-${dayStr}`
   }
 
-  // Check if a date has tasks
+  // Check if a date has tasks or courses
   const getDateIndicators = (day: number) => {
     const dateStr = formatDate(day)
     const dayTasks = tasks.filter(t => t.date === dateStr)
     const hasTask = dayTasks.length > 0
     
-    // Check for conflicts on this day
+    // Get courses for this day of week
+    const date = new Date(currentMonth.year, currentMonth.month, day)
+    const jsDay = date.getDay()
+    const dayOfWeek = jsDay === 0 ? 7 : jsDay // Convert Sunday 0 to 7
+    const dayCourses = allCourses.filter(c => c.dayOfWeek === dayOfWeek)
+    const hasCourse = dayCourses.length > 0
+    
+    // Check for conflicts on this day (tasks overlapping with each other or with courses)
     let hasConflict = false
+    
+    // Check task-task conflicts
     for (let i = 0; i < dayTasks.length; i++) {
       for (let j = i + 1; j < dayTasks.length; j++) {
         const t1Start = parseInt(dayTasks[i].time.split(':')[0]) * 60 + parseInt(dayTasks[i].time.split(':')[1] || '0')
         const t2Start = parseInt(dayTasks[j].time.split(':')[0]) * 60 + parseInt(dayTasks[j].time.split(':')[1] || '0')
-        // Simple overlap check (within 1 hour)
         if (Math.abs(t1Start - t2Start) < 60) {
           hasConflict = true
           break
         }
       }
+      if (hasConflict) break
+    }
+    
+    // Check task-course conflicts
+    if (!hasConflict) {
+      for (const task of dayTasks) {
+        const taskStart = parseInt(task.time.split(':')[0]) * 60 + parseInt(task.time.split(':')[1] || '0')
+        const taskEnd = taskStart + 60 // Assume 1 hour duration
+        
+        for (const course of dayCourses) {
+          const courseStart = parseInt(course.startTime.split(':')[0]) * 60 + parseInt(course.startTime.split(':')[1] || '0')
+          const courseEnd = parseInt(course.endTime.split(':')[0]) * 60 + parseInt(course.endTime.split(':')[1] || '0')
+          
+          if (taskStart < courseEnd && taskEnd > courseStart) {
+            hasConflict = true
+            break
+          }
+        }
+        if (hasConflict) break
+      }
     }
 
-    return { hasTask, hasConflict }
+    return { hasTask, hasCourse, hasConflict }
   }
 
   const daysInMonth = getDaysInMonth(currentMonth.year, currentMonth.month)
@@ -1630,7 +1658,7 @@ function CalendarView({
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const day = i + 1
             const dateStr = formatDate(day)
-            const { hasTask, hasConflict } = getDateIndicators(day)
+            const { hasTask, hasCourse, hasConflict } = getDateIndicators(day)
             const isSelected = selectedDate === dateStr
             const isTodayDate = isToday(day)
             
@@ -1654,7 +1682,12 @@ function CalendarView({
                 </span>
                 
                 {/* Dot indicators */}
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-0.5">
+                  {/* Course dot (green/indigo) */}
+                  {hasCourse && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                  )}
+                  {/* Task dot (blue or red for conflict) */}
                   {hasTask && (
                     <div className={cn(
                       "w-1.5 h-1.5 rounded-full",
@@ -1942,7 +1975,7 @@ function InboxTaskEditForm({
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="任务标题"
+          placeholder="任务标��"
           className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-lg px-3 py-1.5 text-sm outline-none focus:border-sky-500/50"
         />
       </div>

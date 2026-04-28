@@ -36,11 +36,41 @@ export function checkTaskConflict(
     
     const existingStart = timeToMinutes(task.time)
     // Assume 1 hour duration for existing tasks
-    const existingEnd = existingStart + 60
+    const existingEnd = task.endTime ? timeToMinutes(task.endTime) : existingStart + 60
     
     // Check for overlap
     if (newStart < existingEnd && newEnd > existingStart) {
       return task
+    }
+  }
+  return null
+}
+
+// Check for buffer time warning (gap less than 10 minutes but not overlapping)
+export function checkTaskBufferWarning(
+  newTask: { date: string; time: string; endTime?: string },
+  existingTasks: Task[],
+  excludeId?: string
+): { task: Task; type: 'before' | 'after' } | null {
+  const BUFFER_MINUTES = 10
+  const newStart = timeToMinutes(newTask.time)
+  const newEnd = newTask.endTime ? timeToMinutes(newTask.endTime) : newStart + 60
+  
+  for (const task of existingTasks) {
+    if (excludeId && task.id === excludeId) continue
+    if (task.date !== newTask.date) continue
+    
+    const existingStart = timeToMinutes(task.time)
+    const existingEnd = task.endTime ? timeToMinutes(task.endTime) : existingStart + 60
+    
+    // Check if gap before new task is less than 10 min (existing ends right before new starts)
+    if (existingEnd <= newStart && newStart - existingEnd < BUFFER_MINUTES) {
+      return { task, type: 'after' }
+    }
+    
+    // Check if gap after new task is less than 10 min (new ends right before existing starts)
+    if (newEnd <= existingStart && existingStart - newEnd < BUFFER_MINUTES) {
+      return { task, type: 'before' }
     }
   }
   return null

@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { ArrowLeft, Menu, Mic, Smile, Plus, Check, MapPin, Sparkles, Lightbulb, X, Send, Trash2, Edit3, ChevronDown, Pencil, StickyNote, Calendar, School, Loader2, Download, Settings, Inbox, ArrowRight, Clock, MessageSquare, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react"
-import { useTaskStore, Task, checkTaskConflict } from "@/hooks/use-task-store"
-import { useCourseStore, Course, checkCourseConflict } from "@/hooks/use-course-store"
+import { useTaskStore, Task, checkTaskConflict, checkTaskBufferWarning } from "@/hooks/use-task-store"
+import { useCourseStore, Course, checkCourseConflict, checkCourseBufferWarning } from "@/hooks/use-course-store"
 import { cn } from "@/lib/utils"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { StatusBar } from "./status-bar"
@@ -300,10 +300,10 @@ function mockAiProcess(
   // Step 5: Generate appropriate insight
   let insight: string
   if (hasExplicitEntities) {
-    insight = "精准识别：已为您提��明确的时间与地点"
+    insight = "精准识别：已为您锁定明确的时间与地点"
   } else if (matchedHabit) {
     if (finalDate !== TODAY_DATE) {
-      insight = "智能排程：依据习惯偏好，已安排至明日���佳时段"
+      insight = "智能排程：依据习惯偏好，已安排至明日最佳时段"
     } else {
       insight = "智能排程：结合偏好已为您插空安排至今日最佳时段"
     }
@@ -344,6 +344,14 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   const [showHabitsModal, setShowHabitsModal] = useState(false)
   const [showManualAddModal, setShowManualAddModal] = useState(false)
   const [manualAddConflictError, setManualAddConflictError] = useState<string | null>(null)
+  
+  // Buffer time warning state (10-minute gap warning)
+  const [showBufferWarning, setShowBufferWarning] = useState(false)
+  const [pendingBufferTask, setPendingBufferTask] = useState<{
+    type: 'manual' | 'edit' | 'parse'
+    taskData: { name: string; date: string; startTime: string; endTime: string; location: string }
+    taskId?: string // For edit mode
+  } | null>(null)
   
   // Dual-Mode View State
   const [viewMode, setViewMode] = useState<'agent' | 'calendar'>('agent')
@@ -796,13 +804,23 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
                     )
                   } else {
                     return (
-                      <TaskCard 
-                        key={item.data.id} 
-                        task={item.data} 
+<TaskCard
+                        key={item.data.id}
+                        task={item.data}
                         index={index}
                         showWarning={shouldShowWarning(item.data)}
                         onComplete={handleCompleteTask}
                         onUpdateTask={updateTask}
+                        allTasks={tasks}
+                        allCourses={courses}
+                        onBufferWarning={(taskId, taskData) => {
+                          setPendingBufferTask({
+                            type: 'edit',
+                            taskData,
+                            taskId
+                          })
+                          setShowBufferWarning(true)
+                        }}
                       />
                     )
                   }
@@ -1512,7 +1530,7 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
         </>
       )}
 
-      {/* Manual Add Schedule Modal */}
+{/* Manual Add Schedule Modal */}
       {showManualAddModal && (
         <ManualAddScheduleModal
           isOpen={showManualAddModal}
@@ -1521,19 +1539,28 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
             setManualAddConflictError(null)
           }}
           existingTasks={tasks}
-          existingCourses={todayCourses}
+          existingCourses={courses}
           conflictError={manualAddConflictError}
+          selectedDate={selectedAgentDate}
           onSave={(taskData) => {
-            // Check for conflicts with existing tasks
+            // Calculate the day of week from the task date
+            const [month, day] = taskData.date.split('-').map(Number)
+            const year = new Date().getFullYear()
+            const taskDate = new Date(year, month - 1, day)
+            const jsDay = taskDate.getDay()
+            const dayOfWeek = jsDay === 0 ? 7 : jsDay // Convert Sunday 0 to 7
+            
+            // Check for conflicts with existing tasks on the same date
             const taskConflict = checkTaskConflict(
               { date: taskData.date, time: taskData.startTime, endTime: taskData.endTime },
               tasks
             )
             
-            // Check for conflicts with courses (convert course to comparable format)
+            // Check for conflicts with courses on the same day of week
+            const coursesOnDay = courses.filter(c => c.dayOfWeek === dayOfWeek)
             const courseConflict = checkCourseConflict(
-              { startTime: taskData.startTime, endTime: taskData.endTime, dayOfWeek: 1 },
-              todayCourses
+              { startTime: taskData.startTime, endTime: taskData.endTime, dayOfWeek },
+              coursesOnDay
             )
             
             if (taskConflict) {
@@ -1542,16 +1569,39 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
             }
             
             if (courseConflict) {
-              setManualAddConflictError(`时间冲突：与课程【${courseConflict.name}】(${courseConflict.startTime}-${courseConflict.endTime}) 重��`)
+              setManualAddConflictError(`时间冲突：与课程【${courseConflict.name}】(${courseConflict.startTime}-${courseConflict.endTime}) 重叠`)
               return
             }
             
-            // No conflict - add task
+            // No hard conflict - check for buffer time warning (10-minute gap)
+            const taskBufferWarning = checkTaskBufferWarning(
+              { date: taskData.date, time: taskData.startTime, endTime: taskData.endTime },
+              tasks
+            )
+            const courseBufferWarning = checkCourseBufferWarning(
+              { startTime: taskData.startTime, endTime: taskData.endTime || taskData.startTime, dayOfWeek },
+              coursesOnDay
+            )
+            
+            if (taskBufferWarning || courseBufferWarning) {
+              // Show buffer warning confirmation
+              setPendingBufferTask({
+                type: 'manual',
+                taskData: taskData
+              })
+              setShowBufferWarning(true)
+              setShowManualAddModal(false)
+              setManualAddConflictError(null)
+              return
+            }
+            
+            // No conflict and no buffer warning - add task directly
             addTask({
               id: `manual-${Date.now()}`,
               title: taskData.name,
               date: taskData.date,
               time: taskData.startTime,
+              endTime: taskData.endTime || undefined,
               location: taskData.location || undefined,
               priority: "P1",
             })
@@ -1597,6 +1647,76 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
                   className="w-full py-2.5 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/40 rounded-xl text-gray-400 text-sm font-medium transition-colors"
                 >
                   取消
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Buffer Time Warning Dialog (10-minute gap) */}
+      {showBufferWarning && pendingBufferTask && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            onClick={() => {
+              setShowBufferWarning(false)
+              setPendingBufferTask(null)
+            }}
+          />
+          <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-sm mx-auto bg-[#1e1e1e] z-50 rounded-2xl shadow-2xl border border-amber-500/30">
+            <div className="p-4 border-b border-white/10">
+              <h2 className="text-base font-semibold text-white text-center flex items-center justify-center gap-2">
+                <Clock className="w-5 h-5 text-amber-400" />
+                时间安排提醒
+              </h2>
+            </div>
+            <div className="p-4">
+              <p className="text-sm text-gray-300 text-center mb-4">
+                时间安排较紧（间隙不足10分钟），是否确定要添加？
+              </p>
+              <div className="space-y-2">
+                <button
+                  onClick={() => {
+                    // Confirm - save the task
+                    if (pendingBufferTask.type === 'manual') {
+                      addTask({
+                        id: `manual-${Date.now()}`,
+                        title: pendingBufferTask.taskData.name,
+                        date: pendingBufferTask.taskData.date,
+                        time: pendingBufferTask.taskData.startTime,
+                        endTime: pendingBufferTask.taskData.endTime || undefined,
+                        location: pendingBufferTask.taskData.location || undefined,
+                        priority: "P1",
+                      })
+                    } else if (pendingBufferTask.type === 'edit' && pendingBufferTask.taskId) {
+                      updateTask(pendingBufferTask.taskId, {
+                        title: pendingBufferTask.taskData.name,
+                        date: pendingBufferTask.taskData.date,
+                        time: pendingBufferTask.taskData.startTime,
+                        endTime: pendingBufferTask.taskData.endTime || undefined,
+                        location: pendingBufferTask.taskData.location || undefined,
+                      })
+                    }
+                    setShowBufferWarning(false)
+                    setPendingBufferTask(null)
+                  }}
+                  className="w-full py-2.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded-xl text-amber-400 text-sm font-medium transition-colors"
+                >
+                  是，确定添加
+                </button>
+                <button
+                  onClick={() => {
+                    // Cancel - return to editing
+                    if (pendingBufferTask.type === 'manual') {
+                      setShowManualAddModal(true)
+                    }
+                    setShowBufferWarning(false)
+                    setPendingBufferTask(null)
+                  }}
+                  className="w-full py-2.5 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/40 rounded-xl text-gray-400 text-sm font-medium transition-colors"
+                >
+                  否，返回修改
                 </button>
               </div>
             </div>
@@ -1964,6 +2084,7 @@ function ManualAddScheduleModal({
   existingTasks,
   existingCourses,
   conflictError,
+  selectedDate,
   onSave
 }: {
   isOpen: boolean
@@ -1971,13 +2092,25 @@ function ManualAddScheduleModal({
   existingTasks: Task[]
   existingCourses: Course[]
   conflictError: string | null
+  selectedDate: string
   onSave: (data: { name: string; date: string; startTime: string; endTime: string; location: string }) => void
 }) {
   const [name, setName] = useState("")
-  const [date, setDate] = useState("04-22")
+  const [date, setDate] = useState(selectedDate) // Use the currently selected date as default
   const [startTime, setStartTime] = useState("")
   const [endTime, setEndTime] = useState("")
   const [location, setLocation] = useState("")
+
+  // Reset form when modal opens with new selected date
+  useEffect(() => {
+    if (isOpen) {
+      setDate(selectedDate)
+      setName("")
+      setStartTime("")
+      setEndTime("")
+      setLocation("")
+    }
+  }, [isOpen, selectedDate])
 
   const handleSave = () => {
     if (!name.trim() || !startTime.trim()) return
@@ -2556,19 +2689,25 @@ function CourseCard({
 }
 
 // Task Card Component - Collapsible/Accordion style with Inline Editing
-function TaskCard({ 
-  task, 
+function TaskCard({
+  task,
   index,
   showWarning,
   onComplete,
-  onUpdateTask
-}: { 
+  onUpdateTask,
+  allTasks,
+  allCourses,
+  onBufferWarning
+  }: {
   task: Task
   index: number
   showWarning: boolean
   onComplete: (taskId: string) => void
   onUpdateTask: (taskId: string, updates: Partial<Task>) => void
-}) {
+  allTasks: Task[]
+  allCourses: Course[]
+  onBufferWarning?: (taskId: string, taskData: { name: string; date: string; startTime: string; endTime: string; location: string }) => void
+  }) {
   const [isExpanded, setIsExpanded] = useState(false)
   
   // Note editing state
@@ -2579,8 +2718,10 @@ function TaskCard({
   const [isEditingDetails, setIsEditingDetails] = useState(false)
   const [editTitle, setEditTitle] = useState(task.title)
   const [editDate, setEditDate] = useState(task.date)
-  const [editTime, setEditTime] = useState(task.time)
+  const [editStartTime, setEditStartTime] = useState(task.time)
+  const [editEndTime, setEditEndTime] = useState(task.endTime || "")
   const [editLocation, setEditLocation] = useState(task.location || "")
+  const [editConflictError, setEditConflictError] = useState<string | null>(null)
   
   const hasInsight = task.insight
   const hasNotes = !!task.notes
@@ -2602,19 +2743,79 @@ function TaskCard({
   const handleStartEditDetails = () => {
     setEditTitle(task.title)
     setEditDate(task.date)
-    setEditTime(task.time)
+    setEditStartTime(task.time)
+    setEditEndTime(task.endTime || "")
     setEditLocation(task.location || "")
+    setEditConflictError(null)
     setIsEditingDetails(true)
   }
 
-  // Save details handler - this will re-trigger conflict detection automatically
+  // Save details handler with conflict detection
   const handleSaveDetails = () => {
+    // Calculate day of week from the edit date
+    const [month, day] = editDate.split('-').map(Number)
+    const year = new Date().getFullYear()
+    const taskDate = new Date(year, month - 1, day)
+    const jsDay = taskDate.getDay()
+    const dayOfWeek = jsDay === 0 ? 7 : jsDay
+
+    // Check for conflicts with other tasks (EXCLUDING this task)
+    const otherTasks = allTasks.filter(t => t.id !== task.id)
+    const taskConflict = checkTaskConflict(
+      { date: editDate, time: editStartTime, endTime: editEndTime },
+      otherTasks
+    )
+
+    // Check for conflicts with courses on the same day of week
+    const coursesOnDay = allCourses.filter(c => c.dayOfWeek === dayOfWeek)
+    const courseConflict = checkCourseConflict(
+      { startTime: editStartTime, endTime: editEndTime, dayOfWeek },
+      coursesOnDay
+    )
+
+    if (taskConflict) {
+      setEditConflictError(`时间冲突：与【${taskConflict.title}】(${taskConflict.time}) 重叠`)
+      return
+    }
+
+    if (courseConflict) {
+      setEditConflictError(`时间冲突：与课程【${courseConflict.name}】(${courseConflict.startTime}-${courseConflict.endTime}) 重叠`)
+      return
+    }
+
+    // No hard conflict - check for buffer time warning (10-minute gap)
+    const taskBufferWarning = checkTaskBufferWarning(
+      { date: editDate, time: editStartTime, endTime: editEndTime },
+      otherTasks
+    )
+    const courseBufferWarning = checkCourseBufferWarning(
+      { startTime: editStartTime, endTime: editEndTime || editStartTime, dayOfWeek },
+      coursesOnDay
+    )
+
+    if ((taskBufferWarning || courseBufferWarning) && onBufferWarning) {
+      // Trigger buffer warning via callback
+      onBufferWarning(task.id, {
+        name: editTitle.trim() || task.title,
+        date: editDate,
+        startTime: editStartTime,
+        endTime: editEndTime,
+        location: editLocation.trim()
+      })
+      setEditConflictError(null)
+      setIsEditingDetails(false)
+      return
+    }
+
+    // No conflict and no buffer warning - save the updates
     onUpdateTask(task.id, {
       title: editTitle.trim() || task.title,
       date: editDate,
-      time: editTime,
+      time: editStartTime,
+      endTime: editEndTime || undefined,
       location: editLocation.trim() || undefined
     })
+    setEditConflictError(null)
     setIsEditingDetails(false)
   }
 
@@ -2622,8 +2823,10 @@ function TaskCard({
   const handleCancelDetails = () => {
     setEditTitle(task.title)
     setEditDate(task.date)
-    setEditTime(task.time)
+    setEditStartTime(task.time)
+    setEditEndTime(task.endTime || "")
     setEditLocation(task.location || "")
+    setEditConflictError(null)
     setIsEditingDetails(false)
   }
 
@@ -2713,7 +2916,7 @@ function TaskCard({
                 
                 {/* Title Input */}
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">��务名称</label>
+                  <label className="text-xs text-gray-500 block mb-1">任务名称</label>
                   <input
                     type="text"
                     value={editTitle}
@@ -2723,26 +2926,38 @@ function TaskCard({
                   />
                 </div>
                 
-                {/* Date & Time Input */}
+                {/* Date Input */}
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">日期</label>
+                  <input
+                    type="text"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-sky-500/50"
+                    placeholder="04-22"
+                  />
+                </div>
+                
+                {/* Time Range Input */}
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <label className="text-xs text-gray-500 block mb-1">日期</label>
+                    <label className="text-xs text-gray-500 block mb-1">开始时间</label>
                     <input
                       type="text"
-                      value={editDate}
-                      onChange={(e) => setEditDate(e.target.value)}
+                      value={editStartTime}
+                      onChange={(e) => setEditStartTime(e.target.value)}
                       className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-sky-500/50"
-                      placeholder="04-22"
+                      placeholder="14:00"
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="text-xs text-gray-500 block mb-1">时间</label>
+                    <label className="text-xs text-gray-500 block mb-1">结束时间</label>
                     <input
                       type="text"
-                      value={editTime}
-                      onChange={(e) => setEditTime(e.target.value)}
+                      value={editEndTime}
+                      onChange={(e) => setEditEndTime(e.target.value)}
                       className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-sky-500/50"
-                      placeholder="14:30"
+                      placeholder="15:00"
                     />
                   </div>
                 </div>
@@ -2758,6 +2973,15 @@ function TaskCard({
                     placeholder="输入地点（可选）"
                   />
                 </div>
+                
+                {/* Conflict Error Display */}
+                {editConflictError && (
+                  <div className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-lg">
+                    <p className="text-red-400 text-xs font-medium">
+                      ⚠️ {editConflictError}
+                    </p>
+                  </div>
+                )}
                 
                 {/* Save/Cancel Buttons */}
                 <div className="flex gap-2 pt-1">

@@ -43,6 +43,36 @@ export function checkCourseConflict(newCourse: { startTime: string; endTime: str
   return null
 }
 
+// Check for buffer time warning (gap less than 10 minutes but not overlapping)
+export function checkCourseBufferWarning(
+  newTask: { startTime: string; endTime: string; dayOfWeek: number },
+  existingCourses: Course[],
+  excludeId?: string
+): { course: Course; type: 'before' | 'after' } | null {
+  const BUFFER_MINUTES = 10
+  const newStart = timeToMinutes(newTask.startTime)
+  const newEnd = timeToMinutes(newTask.endTime)
+  
+  for (const course of existingCourses) {
+    if (excludeId && course.id === excludeId) continue
+    if (course.dayOfWeek !== newTask.dayOfWeek) continue
+    
+    const existingStart = timeToMinutes(course.startTime)
+    const existingEnd = timeToMinutes(course.endTime)
+    
+    // Check if gap before new task is less than 10 min (course ends right before new starts)
+    if (existingEnd <= newStart && newStart - existingEnd < BUFFER_MINUTES) {
+      return { course, type: 'after' }
+    }
+    
+    // Check if gap after new task is less than 10 min (new ends right before course starts)
+    if (newEnd <= existingStart && existingStart - newEnd < BUFFER_MINUTES) {
+      return { course, type: 'before' }
+    }
+  }
+  return null
+}
+
 interface CourseStore {
   courses: Course[]
   addCourse: (course: Course) => void

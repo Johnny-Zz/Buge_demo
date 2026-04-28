@@ -29,17 +29,6 @@ export const metadata: Metadata = {
   },
 }
 
-// Global Demo Disclaimer Banner - Click-through watermark at bottom
-function DemoDisclaimer() {
-  return (
-    <div className="fixed bottom-2 left-0 w-full z-[100] pointer-events-none flex justify-center">
-      <span className="text-[10px] text-gray-400/50 tracking-wide select-none">
-        Demo仅为前端功能展示，并非接入AI的最终版本
-      </span>
-    </div>
-  )
-}
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -48,7 +37,6 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className="dark">
       <body className="font-sans antialiased bg-background">
-        <DemoDisclaimer />
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

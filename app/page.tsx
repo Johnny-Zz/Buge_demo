@@ -50,10 +50,27 @@ const SECURITY_TASKS: Task[] = [
   },
 ]
 
+interface ChatState {
+  isUnread: boolean
+  isMuted: boolean
+}
+
+// Chat group IDs for state initialization
+const CHAT_GROUP_IDS = ["group-3", "group-4", "group-2", "group-1"]
+
 export default function Home() {
   const [showOverlay, setShowOverlay] = useState(false)
   const [currentView, setCurrentView] = useState<"list" | "chat">("list")
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
+  
+  // Lifted chat states - persists across view changes
+  const [chatStates, setChatStates] = useState<Record<string, ChatState>>(() => {
+    const initial: Record<string, ChatState> = {}
+    CHAT_GROUP_IDS.forEach(id => {
+      initial[id] = { isUnread: false, isMuted: false }
+    })
+    return initial
+  })
 
   const handleSelectGroup = (groupId: string) => {
     setSelectedGroupId(groupId)
@@ -136,7 +153,11 @@ export default function Home() {
   return (
     <main className="relative min-h-screen bg-[#1a1a1a] max-w-md mx-auto overflow-hidden">
       {currentView === "list" ? (
-        <ChatList onSelectGroup={handleSelectGroup} />
+        <ChatList 
+          onSelectGroup={handleSelectGroup}
+          chatStates={chatStates}
+          setChatStates={setChatStates}
+        />
       ) : (
         renderChatInterface()
       )}

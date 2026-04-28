@@ -347,6 +347,15 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   // Dual-Mode View State
   const [viewMode, setViewMode] = useState<'agent' | 'calendar'>('agent')
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null)
+  const [selectedAgentDate, setSelectedAgentDate] = useState<string>(getTodayDate()) // For Agent mode date navigation
+  
+  // Course edit confirmation dialog
+  const [showCourseEditConfirm, setShowCourseEditConfirm] = useState(false)
+  const [pendingCourseEdit, setPendingCourseEdit] = useState<{
+    courseId: string
+    updates: Partial<Course>
+    originalDate: string
+  } | null>(null)
   
   // Schedule modal states
   const [isImporting, setIsImporting] = useState(false)
@@ -499,26 +508,74 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
     setEditingContent("")
   }
 
-  // Create unified timeline items (tasks + today's courses)
+  // Course edit request - shows confirmation dialog
+  const handleCourseEditRequest = (courseId: string, updates: Partial<Course>, selectedDate: string) => {
+    setPendingCourseEdit({ courseId, updates, originalDate: selectedDate })
+    setShowCourseEditConfirm(true)
+  }
+
+  // Confirm course edit - sync to all weeks
+  const handleConfirmCourseEditAll = () => {
+    if (pendingCourseEdit) {
+      updateCourse(pendingCourseEdit.courseId, pendingCourseEdit.updates)
+    }
+    setShowCourseEditConfirm(false)
+    setPendingCourseEdit(null)
+  }
+
+  // Confirm course edit - single date exception (for now, just apply globally since we don't have exception store)
+  const handleConfirmCourseEditSingle = () => {
+    if (pendingCourseEdit) {
+      // For MVP, we apply globally. In a full implementation, you'd store date-specific exceptions.
+      updateCourse(pendingCourseEdit.courseId, pendingCourseEdit.updates)
+    }
+    setShowCourseEditConfirm(false)
+    setPendingCourseEdit(null)
+  }
+
+  const handleCancelCourseEdit = () => {
+    setShowCourseEditConfirm(false)
+    setPendingCourseEdit(null)
+  }
+
+  // Helper to get day of week from date string (MM-DD format, using current year)
+  const getDayOfWeekFromDate = (dateStr: string): number => {
+    const [month, day] = dateStr.split('-').map(Number)
+    const year = new Date().getFullYear()
+    const date = new Date(year, month - 1, day)
+    const jsDay = date.getDay()
+    return jsDay === 0 ? 7 : jsDay // Convert Sunday 0 to 7
+  }
+
+  // Get courses for selected date (based on day of week)
+  const getCoursesForDate = (dateStr: string): Course[] => {
+    const dayOfWeek = getDayOfWeekFromDate(dateStr)
+    return courses.filter(c => c.dayOfWeek === dayOfWeek)
+  }
+
+  // Create unified timeline items - STRICTLY filtered by selectedAgentDate
   type TimelineItem = 
     | { type: 'task'; data: Task }
     | { type: 'course'; data: Course }
 
+  const selectedDateCourses = getCoursesForDate(selectedAgentDate)
+  const selectedDateTasks = tasks.filter(t => t.date === selectedAgentDate)
+
   const timelineItems: TimelineItem[] = [
-    ...tasks.map(t => ({ type: 'task' as const, data: t })),
-    ...todayCourses.map(c => ({ type: 'course' as const, data: c }))
+    ...selectedDateTasks.map(t => ({ type: 'task' as const, data: t })),
+    ...selectedDateCourses.map(c => ({ type: 'course' as const, data: c }))
   ]
 
   // Sort all items chronologically
   const sortedTimelineItems = timelineItems.sort((a, b) => {
-    const getDateTime = (item: TimelineItem) => {
+    const getTime = (item: TimelineItem) => {
       if (item.type === 'task') {
-        return `${item.data.date} ${item.data.time}`
+        return item.data.time
       } else {
-        return `${TODAY_DATE} ${item.data.startTime}`
+        return item.data.startTime
       }
     }
-    return getDateTime(a).localeCompare(getDateTime(b))
+    return getTime(a).localeCompare(getTime(b))
   })
 
   // Also keep sorted tasks for conflict detection
@@ -584,10 +641,53 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
         </div>
       </div>
 
+      {/* Date Navigator - Agent Mode Only */}
+      {viewMode === 'agent' && (
+        <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-white/[0.02]">
+          <button 
+            onClick={() => {
+              const [month, day] = selectedAgentDate.split('-').map(Number)
+              const date = new Date(new Date().getFullYear(), month - 1, day - 1)
+              const newMonth = String(date.getMonth() + 1).padStart(2, '0')
+              const newDay = String(date.getDate()).padStart(2, '0')
+              setSelectedAgentDate(`${newMonth}-${newDay}`)
+            }}
+            className="flex items-center gap-1 px-2 py-1 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors text-xs"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            前一天
+          </button>
+          <div className="text-center">
+            <p className="text-sm font-medium text-white">
+              {(() => {
+                const [month, day] = selectedAgentDate.split('-').map(Number)
+                const date = new Date(new Date().getFullYear(), month - 1, day)
+                const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+                const isToday = selectedAgentDate === getTodayDate()
+                return `${month}月${day}日 ${weekDays[date.getDay()]}${isToday ? ' (今天)' : ''}`
+              })()}
+            </p>
+          </div>
+          <button 
+            onClick={() => {
+              const [month, day] = selectedAgentDate.split('-').map(Number)
+              const date = new Date(new Date().getFullYear(), month - 1, day + 1)
+              const newMonth = String(date.getMonth() + 1).padStart(2, '0')
+              const newDay = String(date.getDate()).padStart(2, '0')
+              setSelectedAgentDate(`${newMonth}-${newDay}`)
+            }}
+            className="flex items-center gap-1 px-2 py-1 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors text-xs"
+          >
+            后一天
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Main Content - Agent Mode */}
       {viewMode === 'agent' && (
         <div className="flex-1 overflow-y-auto px-3 py-4">
-          {tasks.length === 0 && todayCourses.length === 0 && !isProcessing && !pendingConfirmation ? (
+          {sortedTimelineItems.length === 0 && !isProcessing && !pendingConfirmation ? (
             /* Empty State */
             <div className="flex flex-col items-center justify-center h-full">
               <div className="w-20 h-20 mb-6 rounded-full bg-gradient-to-br from-sky-300/20 to-sky-400/20 flex items-center justify-center">
@@ -690,6 +790,8 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
                         key={item.data.id} 
                         course={item.data} 
                         index={index}
+                        selectedDate={selectedAgentDate}
+                        onEditCourse={handleCourseEditRequest}
                       />
                     )
                   } else {
@@ -1458,6 +1560,48 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
           }}
         />
       )}
+
+      {/* Course Edit Confirmation Dialog */}
+      {showCourseEditConfirm && pendingCourseEdit && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 animate-in fade-in"
+            onClick={handleCancelCourseEdit}
+          />
+          <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-sm mx-auto bg-[#1e1e1e] z-50 rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 border border-indigo-500/30">
+            <div className="p-4 border-b border-white/10">
+              <h2 className="text-base font-semibold text-white text-center">
+                确认课程修改
+              </h2>
+            </div>
+            <div className="p-4">
+              <p className="text-sm text-gray-300 text-center mb-4">
+                是否将修改同步至每周的该课程？
+              </p>
+              <div className="space-y-2">
+                <button
+                  onClick={handleConfirmCourseEditAll}
+                  className="w-full py-2.5 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/40 rounded-xl text-indigo-400 text-sm font-medium transition-colors"
+                >
+                  是，同步到所有周
+                </button>
+                <button
+                  onClick={handleConfirmCourseEditSingle}
+                  className="w-full py-2.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded-xl text-amber-400 text-sm font-medium transition-colors"
+                >
+                  否，仅修改本次
+                </button>
+                <button
+                  onClick={handleCancelCourseEdit}
+                  className="w-full py-2.5 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/40 rounded-xl text-gray-400 text-sm font-medium transition-colors"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -1723,45 +1867,55 @@ function CalendarView({
             </button>
           </div>
           
-          <div className="max-h-[200px] overflow-y-auto p-3 space-y-2">
+          <div className="max-h-[280px] overflow-y-auto p-3 space-y-2">
             {selectedDateItems.length === 0 ? (
               <p className="text-center text-gray-500 text-sm py-4">
                 该日期暂无日程安排
               </p>
             ) : (
-              selectedDateItems.map((item, idx) => (
-                <div 
-                  key={`${item.type}-${idx}`}
-                  className={cn(
-                    "flex items-center gap-3 p-2.5 rounded-xl",
-                    item.type === 'course' 
-                      ? "bg-indigo-500/10 border border-indigo-500/20"
-                      : "bg-sky-500/10 border border-sky-500/20"
-                  )}
-                >
-                  <div className={cn(
-                    "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
-                    item.type === 'course' ? "bg-indigo-500/30" : "bg-sky-500/30"
-                  )}>
-                    {item.type === 'course' ? (
-                      <School className="w-4 h-4 text-indigo-400" />
-                    ) : (
-                      <Check className="w-4 h-4 text-sky-400" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">
-                      {item.type === 'course' ? (item.data as Course).name : (item.data as Task).title}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {item.type === 'course' 
-                        ? `${(item.data as Course).startTime}-${(item.data as Course).endTime} | ${(item.data as Course).location}`
-                        : `${(item.data as Task).time} | ${(item.data as Task).location || '未指定地点'}`
-                      }
-                    </p>
-                  </div>
-                </div>
-              ))
+              selectedDateItems.map((item, idx) => {
+                if (item.type === 'course') {
+                  const course = item.data as Course
+                  return (
+                    <div 
+                      key={`course-${course.id}`}
+                      className="flex items-center gap-3 p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20"
+                    >
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-indigo-500/30">
+                        <School className="w-4 h-4 text-indigo-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-white truncate">{course.name}</p>
+                        <p className="text-xs text-gray-400">
+                          <span className="font-mono text-indigo-400/70">{course.startTime}-{course.endTime}</span>
+                          <span className="mx-1.5 text-gray-600">|</span>
+                          {course.location}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                } else {
+                  const task = item.data as Task
+                  return (
+                    <div 
+                      key={`task-${task.id}`}
+                      className="flex items-center gap-3 p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/20"
+                    >
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-sky-500/30">
+                        <Check className="w-4 h-4 text-sky-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-white truncate">{task.title}</p>
+                        <p className="text-xs text-gray-400">
+                          <span className="font-mono text-sky-400/70">{task.time}</span>
+                          <span className="mx-1.5 text-gray-600">|</span>
+                          {task.location || '未指定地点'}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                }
+              })
             )}
           </div>
         </div>
@@ -2220,38 +2374,151 @@ function CourseEditForm({
   )
 }
 
-// Course Card Component - Fixed events, not completable
+// Course Card Component - Collapsible/Accordion style with Edit functionality
 function CourseCard({ 
   course, 
-  index 
+  index,
+  onEditCourse,
+  selectedDate
 }: { 
   course: Course
-  index: number 
+  index: number
+  onEditCourse?: (courseId: string, updates: Partial<Course>, selectedDate: string) => void
+  selectedDate?: string
 }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editName, setEditName] = useState(course.name)
+  const [editStartTime, setEditStartTime] = useState(course.startTime)
+  const [editEndTime, setEditEndTime] = useState(course.endTime)
+  const [editLocation, setEditLocation] = useState(course.location)
+
+  const handleSaveEdit = () => {
+    if (onEditCourse && selectedDate) {
+      onEditCourse(course.id, {
+        name: editName.trim() || course.name,
+        startTime: editStartTime.trim() || course.startTime,
+        endTime: editEndTime.trim() || course.endTime,
+        location: editLocation.trim() || course.location
+      }, selectedDate)
+    }
+    setIsEditing(false)
+  }
+
+  const handleCancelEdit = () => {
+    setEditName(course.name)
+    setEditStartTime(course.startTime)
+    setEditEndTime(course.endTime)
+    setEditLocation(course.location)
+    setIsEditing(false)
+  }
+
   return (
     <div 
-      className="backdrop-blur-xl rounded-2xl p-4 transition-all duration-300 animate-in slide-in-from-bottom-2 fade-in bg-gradient-to-br from-indigo-500/10 to-blue-500/10 border border-indigo-500/20 shadow-lg"
+      className="backdrop-blur-xl rounded-2xl transition-all duration-300 animate-in slide-in-from-bottom-2 fade-in bg-gradient-to-br from-indigo-500/10 to-blue-500/10 border border-indigo-500/20 shadow-lg overflow-hidden"
       style={{ animationDelay: `${index * 100}ms` }}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
+      {/* Collapsed Header - Always visible */}
+      <button
+        onClick={() => !isEditing && setIsExpanded(!isExpanded)}
+        className="w-full p-4 flex items-center gap-3 text-left"
+      >
+        <div className="w-8 h-8 rounded-lg bg-indigo-500/30 flex items-center justify-center flex-shrink-0">
           <School className="w-4 h-4 text-indigo-400" />
-          <span className="text-xs text-indigo-400 font-medium">课程</span>
         </div>
-        <span className="font-mono text-xs text-indigo-400/70">
-          {course.startTime} - {course.endTime}
-        </span>
-      </div>
-      
-      {/* Course Name */}
-      <p className="text-white text-sm font-medium mb-2">{course.name}</p>
-      
-      {/* Location */}
-      <div className="flex items-center gap-1.5">
-        <MapPin className="w-3 h-3 text-gray-500" />
-        <p className="text-gray-400 text-xs">{course.location}</p>
-      </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-white text-sm font-medium truncate">{course.name}</p>
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <span className="font-mono text-indigo-400/70">{course.startTime} - {course.endTime}</span>
+            <span className="text-gray-600">|</span>
+            <span className="truncate">{course.location}</span>
+          </div>
+        </div>
+        <ChevronDown className={cn(
+          "w-4 h-4 text-gray-400 transition-transform",
+          isExpanded && "rotate-180"
+        )} />
+      </button>
+
+      {/* Expanded Content */}
+      {isExpanded && (
+        <div className="px-4 pb-4 pt-0 space-y-3 border-t border-indigo-500/10 animate-in fade-in slide-in-from-top-2">
+          {isEditing ? (
+            /* Edit Form */
+            <div className="space-y-3 pt-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">课程名称</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500/50"
+                />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 block mb-1">开始时间</label>
+                  <input
+                    type="text"
+                    value={editStartTime}
+                    onChange={(e) => setEditStartTime(e.target.value)}
+                    placeholder="08:00"
+                    className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500/50"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 block mb-1">结束时间</label>
+                  <input
+                    type="text"
+                    value={editEndTime}
+                    onChange={(e) => setEditEndTime(e.target.value)}
+                    placeholder="09:40"
+                    className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500/50"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">上课地点</label>
+                <input
+                  type="text"
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500/50"
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={handleSaveEdit}
+                  className="flex-1 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/40 rounded-lg text-indigo-400 text-sm font-medium transition-colors"
+                >
+                  保存
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  className="flex-1 py-2 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/40 rounded-lg text-gray-400 text-sm font-medium transition-colors"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* View Mode */
+            <div className="pt-3">
+              <div className="flex items-center gap-2 mb-3">
+                <MapPin className="w-3.5 h-3.5 text-gray-500" />
+                <p className="text-gray-300 text-sm">{course.location}</p>
+              </div>
+              <button
+                onClick={() => setIsEditing(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-gray-300 text-xs font-medium transition-colors"
+              >
+                <Pencil className="w-3 h-3" />
+                编辑课程
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -2415,7 +2682,7 @@ function TaskCard({
                 
                 {/* Title Input */}
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">任务名称</label>
+                  <label className="text-xs text-gray-500 block mb-1">��务名称</label>
                   <input
                     type="text"
                     value={editTitle}

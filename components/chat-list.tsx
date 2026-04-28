@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Search, MessageSquare, Hash, Users, Activity, BellOff, Mail, MailOpen } from "lucide-react"
+
+import { Search, MessageSquare, Hash, Users, Activity, Bell, BellOff, Mail, MailOpen } from "lucide-react"
 import { StatusBar } from "./status-bar"
 import { useTaskStore } from "@/hooks/use-task-store"
 import {
@@ -27,6 +27,8 @@ interface ChatState {
 
 interface ChatListProps {
   onSelectGroup: (groupId: string) => void
+  chatStates: Record<string, ChatState>
+  setChatStates: React.Dispatch<React.SetStateAction<Record<string, ChatState>>>
 }
 
 // Static chat data - no hardcoded unread counts
@@ -63,17 +65,8 @@ const chatGroups: ChatGroup[] = [
   },
 ]
 
-export function ChatList({ onSelectGroup }: ChatListProps) {
+export function ChatList({ onSelectGroup, chatStates, setChatStates }: ChatListProps) {
   const { tasks } = useTaskStore()
-  
-  // Dynamic state for each chat - initialized with isUnread: false, isMuted: false
-  const [chatStates, setChatStates] = useState<Record<string, ChatState>>(() => {
-    const initial: Record<string, ChatState> = {}
-    chatGroups.forEach(group => {
-      initial[group.id] = { isUnread: false, isMuted: false }
-    })
-    return initial
-  })
   
   // Dynamic timestamp for 不鸽 - show "10:30" only if there are tasks
   const bugeTimestamp = tasks.length > 0 ? "10:30" : ""
@@ -245,8 +238,17 @@ export function ChatList({ onSelectGroup }: ChatListProps) {
                   onClick={() => toggleMuted(group.id)}
                   className="text-white hover:bg-white/10 focus:bg-white/10 focus:text-white cursor-pointer"
                 >
-                  <BellOff className="w-4 h-4 mr-2 text-gray-400" />
-                  {isMuted ? "取消免打扰" : "设置免打扰"}
+                  {isMuted ? (
+                    <>
+                      <Bell className="w-4 h-4 mr-2 text-gray-400" />
+                      取消免打扰
+                    </>
+                  ) : (
+                    <>
+                      <BellOff className="w-4 h-4 mr-2 text-gray-400" />
+                      设置免打扰
+                    </>
+                  )}
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>

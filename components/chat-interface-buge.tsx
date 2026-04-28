@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react"
 import { ArrowLeft, Menu, Mic, Smile, Plus, Check, MapPin, Sparkles, Lightbulb, X, Send, Trash2, Edit3, ChevronDown, Pencil, StickyNote, Calendar, School, Loader2, Download, Settings, Inbox, ArrowRight, Clock } from "lucide-react"
-import { useTaskStore, Task } from "@/hooks/use-task-store"
+import { useTaskStore, Task, checkTaskConflict } from "@/hooks/use-task-store"
 import { useCourseStore, Course, checkCourseConflict } from "@/hooks/use-course-store"
 import { cn } from "@/lib/utils"
 import { StatusBar } from "./status-bar"
@@ -328,6 +328,9 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   const [showHabitDrawer, setShowHabitDrawer] = useState(false)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [showInboxModal, setShowInboxModal] = useState(false)
+  const [showHabitsModal, setShowHabitsModal] = useState(false)
+  const [showManualAddModal, setShowManualAddModal] = useState(false)
+  const [manualAddConflictError, setManualAddConflictError] = useState<string | null>(null)
   
   // Schedule modal states
   const [isImporting, setIsImporting] = useState(false)
@@ -772,87 +775,41 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
                 </div>
               </button>
 
-              <div className="h-px bg-white/10" />
-
-              <p className="text-gray-400 text-sm">
-                Agent 的长期记忆：不鸽会根据这些偏好智能安排任务
-              </p>
-
-              {/* Saved Habits */}
-              <div className="space-y-2">
-                {habits.map((habit) => (
-                  <div 
-                    key={habit.id}
-                    className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/10 group"
-                  >
-                    <span className="text-lg flex-shrink-0">{habit.icon}</span>
-                    {editingHabitId === habit.id ? (
-                      <div className="flex-1 space-y-2">
-                        <input
-                          type="text"
-                          value={editingContent}
-                          onChange={(e) => setEditingContent(e.target.value)}
-                          className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-sky-500/50"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={handleSaveEditHabit}
-                            className="px-3 py-1 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 rounded text-sky-400 text-xs font-medium transition-colors"
-                          >
-                            保存
-                          </button>
-                          <button
-                            onClick={handleCancelEditHabit}
-                            className="px-3 py-1 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/40 rounded text-gray-400 text-xs font-medium transition-colors"
-                          >
-                            取消
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <p className="flex-1 text-sm text-gray-300 leading-relaxed">{habit.content}</p>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => handleEditHabit(habit)}
-                            className="p-1.5 text-gray-400 hover:text-sky-400 hover:bg-white/10 rounded transition-colors"
-                            title="编辑"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteHabit(habit.id)}
-                            className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-white/10 rounded transition-colors"
-                            title="删除"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Add New Habit */}
-              <div className="space-y-2">
-                <p className="text-xs text-gray-500">添加新习惯</p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newHabit}
-                    onChange={(e) => setNewHabit(e.target.value)}
-                    placeholder="例如：喜欢早起学习..."
-                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-500 outline-none focus:border-sky-500/50"
-                  />
-                  <button
-                    onClick={handleAddHabit}
-                    className="px-4 py-2 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 rounded-lg text-sky-400 text-sm font-medium transition-colors"
-                  >
-                    添加
-                  </button>
+              {/* Habits Management Button */}
+              <button
+                onClick={() => {
+                  setShowHabitDrawer(false)
+                  setShowHabitsModal(true)
+                }}
+                className="w-full flex items-center gap-3 p-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl transition-colors"
+              >
+                <span className="text-lg">🎯</span>
+                <div className="flex-1 text-left">
+                  <p className="text-sm font-medium text-white">习惯偏好设置</p>
+                  <p className="text-xs text-gray-500">Agent 长期记忆与快捷操作</p>
                 </div>
-              </div>
+                {habits.length > 0 && (
+                  <span className="px-2 py-0.5 bg-emerald-500/30 rounded-full text-emerald-400 text-xs font-medium">
+                    {habits.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Manual Add Schedule Button */}
+              <button
+                onClick={() => {
+                  setShowHabitDrawer(false)
+                  setShowManualAddModal(true)
+                  setManualAddConflictError(null)
+                }}
+                className="w-full flex items-center gap-3 p-3 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 rounded-xl transition-colors"
+              >
+                <span className="text-lg">📅</span>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-white">手动添加日程</p>
+                  <p className="text-xs text-gray-500">快速添加任务到时间轴</p>
+                </div>
+              </button>
 
               </div>
           </div>
@@ -1263,7 +1220,338 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
           </div>
         </>
       )}
+
+      {/* Habits Management Modal */}
+      {showHabitsModal && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
+            onClick={() => setShowHabitsModal(false)}
+          />
+          
+          <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-md mx-auto bg-[#1e1e1e] z-50 rounded-2xl shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🎯</span>
+                <h2 className="text-lg font-semibold text-white">习惯偏好设置</h2>
+              </div>
+              <button 
+                onClick={() => setShowHabitsModal(false)}
+                className="p-1 text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+              <p className="text-gray-400 text-sm">
+                Agent 的长期记忆：不鸽会根据这些偏好智能安排任务，同时作为快捷操作按钮显示
+              </p>
+
+              {/* Saved Habits */}
+              <div className="space-y-2">
+                {habits.map((habit) => (
+                  <div 
+                    key={habit.id}
+                    className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/10 group"
+                  >
+                    <span className="text-lg flex-shrink-0">{habit.icon}</span>
+                    {editingHabitId === habit.id ? (
+                      <div className="flex-1 space-y-2">
+                        <input
+                          type="text"
+                          value={editingContent}
+                          onChange={(e) => setEditingContent(e.target.value)}
+                          className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-sky-500/50"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleSaveEditHabit}
+                            className="px-3 py-1 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 rounded text-sky-400 text-xs font-medium transition-colors"
+                          >
+                            保存
+                          </button>
+                          <button
+                            onClick={handleCancelEditHabit}
+                            className="px-3 py-1 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/40 rounded text-gray-400 text-xs font-medium transition-colors"
+                          >
+                            取消
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="flex-1 text-sm text-gray-300 leading-relaxed">{habit.content}</p>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => handleEditHabit(habit)}
+                            className="p-1.5 text-gray-400 hover:text-sky-400 hover:bg-white/10 rounded transition-colors"
+                            title="编辑"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteHabit(habit.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-white/10 rounded transition-colors"
+                            title="删除"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+                {habits.length === 0 && (
+                  <div className="py-6 text-center">
+                    <span className="text-2xl">🎯</span>
+                    <p className="text-gray-500 text-sm mt-2">暂无习惯偏好</p>
+                    <p className="text-gray-600 text-xs mt-1">添加习惯后会显示为快捷操作按钮</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Add New Habit */}
+              <div className="space-y-2 pt-2 border-t border-white/10">
+                <p className="text-xs text-gray-500">添加新习惯</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newHabit}
+                    onChange={(e) => setNewHabit(e.target.value)}
+                    placeholder="例如：喜欢早起学习..."
+                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-500 outline-none focus:border-sky-500/50"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAddHabit()
+                    }}
+                  />
+                  <button
+                    onClick={handleAddHabit}
+                    disabled={!newHabit.trim()}
+                    className="px-4 py-2 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 rounded-lg text-sky-400 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    添加
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-white/10">
+              <button
+                onClick={() => setShowHabitsModal(false)}
+                className="w-full py-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 rounded-xl text-emerald-400 text-sm font-medium transition-colors"
+              >
+                完成
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Manual Add Schedule Modal */}
+      {showManualAddModal && (
+        <ManualAddScheduleModal
+          isOpen={showManualAddModal}
+          onClose={() => {
+            setShowManualAddModal(false)
+            setManualAddConflictError(null)
+          }}
+          existingTasks={tasks}
+          existingCourses={todayCourses}
+          conflictError={manualAddConflictError}
+          onSave={(taskData) => {
+            // Check for conflicts with existing tasks
+            const taskConflict = checkTaskConflict(
+              { date: taskData.date, time: taskData.startTime, endTime: taskData.endTime },
+              tasks
+            )
+            
+            // Check for conflicts with courses (convert course to comparable format)
+            const courseConflict = checkCourseConflict(
+              { startTime: taskData.startTime, endTime: taskData.endTime, dayOfWeek: 1 },
+              todayCourses
+            )
+            
+            if (taskConflict) {
+              setManualAddConflictError(`时间冲突：与【${taskConflict.title}】(${taskConflict.time}) 重叠`)
+              return
+            }
+            
+            if (courseConflict) {
+              setManualAddConflictError(`时间冲突：与课程【${courseConflict.name}】(${courseConflict.startTime}-${courseConflict.endTime}) 重叠`)
+              return
+            }
+            
+            // No conflict - add task
+            addTask({
+              id: `manual-${Date.now()}`,
+              title: taskData.name,
+              date: taskData.date,
+              time: taskData.startTime,
+              location: taskData.location || undefined,
+              priority: "P1",
+            })
+            
+            setShowManualAddModal(false)
+            setManualAddConflictError(null)
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+// Manual Add Schedule Modal Component
+function ManualAddScheduleModal({
+  isOpen,
+  onClose,
+  existingTasks,
+  existingCourses,
+  conflictError,
+  onSave
+}: {
+  isOpen: boolean
+  onClose: () => void
+  existingTasks: Task[]
+  existingCourses: Course[]
+  conflictError: string | null
+  onSave: (data: { name: string; date: string; startTime: string; endTime: string; location: string }) => void
+}) {
+  const [name, setName] = useState("")
+  const [date, setDate] = useState("04-22")
+  const [startTime, setStartTime] = useState("")
+  const [endTime, setEndTime] = useState("")
+  const [location, setLocation] = useState("")
+
+  const handleSave = () => {
+    if (!name.trim() || !startTime.trim()) return
+    onSave({
+      name: name.trim(),
+      date: date.trim() || "04-22",
+      startTime: startTime.trim(),
+      endTime: endTime.trim() || startTime.trim(),
+      location: location.trim()
+    })
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <>
+      <div 
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
+        onClick={onClose}
+      />
+      
+      <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-md mx-auto bg-[#1e1e1e] z-50 rounded-2xl shadow-2xl animate-in fade-in zoom-in-95">
+        <div className="flex items-center justify-between p-4 border-b border-white/10">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">📅</span>
+            <h2 className="text-lg font-semibold text-white">手动添加日程</h2>
+          </div>
+          <button 
+            onClick={onClose}
+            className="p-1 text-gray-400 hover:text-white transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* Conflict Error */}
+          {conflictError && (
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl">
+              <p className="text-red-400 text-sm font-medium flex items-center gap-2">
+                <span>⚠️</span>
+                {conflictError}
+              </p>
+            </div>
+          )}
+
+          {/* Task Name */}
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">任务名称 *</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="例如：团队会议"
+              className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-lg px-3 py-2.5 text-sm outline-none focus:border-sky-500/50"
+            />
+          </div>
+
+          {/* Date */}
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">日期</label>
+            <input
+              type="text"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              placeholder="04-22"
+              className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-lg px-3 py-2.5 text-sm outline-none focus:border-sky-500/50"
+            />
+          </div>
+
+          {/* Time Range */}
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="text-xs text-gray-500 block mb-1">开始时间 *</label>
+              <input
+                type="text"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                placeholder="14:00"
+                className={cn(
+                  "w-full bg-neutral-800 border text-white rounded-lg px-3 py-2.5 text-sm outline-none",
+                  conflictError ? "border-red-500/50 focus:border-red-500" : "border-neutral-700 focus:border-sky-500/50"
+                )}
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-xs text-gray-500 block mb-1">结束时间</label>
+              <input
+                type="text"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                placeholder="15:00"
+                className={cn(
+                  "w-full bg-neutral-800 border text-white rounded-lg px-3 py-2.5 text-sm outline-none",
+                  conflictError ? "border-red-500/50 focus:border-red-500" : "border-neutral-700 focus:border-sky-500/50"
+                )}
+              />
+            </div>
+          </div>
+
+          {/* Location */}
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">地点</label>
+            <input
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="可选，例如：会议室A"
+              className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-lg px-3 py-2.5 text-sm outline-none focus:border-sky-500/50"
+            />
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-white/10 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/40 rounded-xl text-gray-400 text-sm font-medium transition-colors"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!name.trim() || !startTime.trim()}
+            className="flex-1 py-2.5 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 rounded-xl text-sky-400 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            保存
+          </button>
+        </div>
+      </div>
+    </>
   )
 }
 

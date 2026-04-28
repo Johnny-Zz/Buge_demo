@@ -5,6 +5,7 @@ import { ArrowLeft, Menu, Mic, Smile, Plus, Check, MapPin, Sparkles, Lightbulb, 
 import { useTaskStore, Task, checkTaskConflict } from "@/hooks/use-task-store"
 import { useCourseStore, Course, checkCourseConflict } from "@/hooks/use-course-store"
 import { cn } from "@/lib/utils"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { StatusBar } from "./status-bar"
 
 interface ChatInterfaceBugeProps {
@@ -346,7 +347,6 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   
   // Dual-Mode View State
   const [viewMode, setViewMode] = useState<'agent' | 'calendar'>('agent')
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null)
   const [selectedAgentDate, setSelectedAgentDate] = useState<string>(getTodayDate()) // For Agent mode date navigation
   
   // Course edit confirmation dialog
@@ -818,10 +818,7 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
       {viewMode === 'calendar' && (
         <CalendarView 
           tasks={tasks}
-          courses={todayCourses}
           allCourses={courses}
-          selectedDate={selectedCalendarDate}
-          onSelectDate={setSelectedCalendarDate}
           onNavigateToDate={(date) => {
             setSelectedAgentDate(date)
             setViewMode('agent')
@@ -1613,23 +1610,23 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
 // Calendar View Component
 function CalendarView({
   tasks,
-  courses,
   allCourses,
-  selectedDate,
-  onSelectDate,
   onNavigateToDate
 }: {
   tasks: Task[]
-  courses: Course[]
   allCourses: Course[]
-  selectedDate: string | null
-  onSelectDate: (date: string | null) => void
   onNavigateToDate?: (date: string) => void
 }) {
   const [currentMonth, setCurrentMonth] = useState(() => {
     const now = new Date()
     return { year: now.getFullYear(), month: now.getMonth() }
   })
+  
+  // Track which date's popover is open (null = none open)
+  const [openPopoverDate, setOpenPopoverDate] = useState<string | null>(null)
+  
+  // Track click timing to distinguish single vs double click
+  const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Get days in month
   const getDaysInMonth = (year: number, month: number) => {
@@ -1723,14 +1720,12 @@ function CalendarView({
     })
   }
 
-  // Get tasks and courses for selected date
-  const getSelectedDateItems = () => {
-    if (!selectedDate) return []
-    
-    const dayTasks = tasks.filter(t => t.date === selectedDate)
+  // Get tasks and courses for any given date (MM-DD format)
+  const getDateItems = (dateStr: string) => {
+    const dayTasks = tasks.filter(t => t.date === dateStr)
     
     // Get courses for the day of week
-    const dateParts = selectedDate.split('-')
+    const dateParts = dateStr.split('-')
     const month = parseInt(dateParts[0]) - 1
     const day = parseInt(dateParts[1])
     const date = new Date(currentMonth.year, month, day)
@@ -1750,7 +1745,33 @@ function CalendarView({
     })
   }
 
-  const selectedDateItems = getSelectedDateItems()
+  // Handle date cell click with timeout to distinguish from double-click
+  const handleDateClick = (dateStr: string) => {
+    // Clear any existing timeout
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current)
+      clickTimeoutRef.current = null
+    }
+    
+    // Set a timeout - if no double-click happens, toggle popover
+    clickTimeoutRef.current = setTimeout(() => {
+      setOpenPopoverDate(prev => prev === dateStr ? null : dateStr)
+      clickTimeoutRef.current = null
+    }, 200) // 200ms delay to wait for potential double-click
+  }
+
+  // Handle double-click - cancel single click and navigate
+  const handleDateDoubleClick = (dateStr: string) => {
+    // Cancel the pending single-click action
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current)
+      clickTimeoutRef.current = null
+    }
+    
+    // Close any open popover and navigate
+    setOpenPopoverDate(null)
+    onNavigateToDate?.(dateStr)
+  }
 
   // Check if date is today
   const isToday = (day: number) => {
@@ -1804,129 +1825,134 @@ function CalendarView({
             <div key={`empty-${i}`} className="aspect-square bg-[#121212]" />
           ))}
           
-          {/* Day cells */}
+          {/* Day cells with Popover */}
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const day = i + 1
             const dateStr = formatDate(day)
             const { hasTask, hasCourse, hasConflict } = getDateIndicators(day)
-            const isSelected = selectedDate === dateStr
+            const isPopoverOpen = openPopoverDate === dateStr
             const isTodayDate = isToday(day)
+            const dateItems = isPopoverOpen ? getDateItems(dateStr) : []
             
             return (
-              <button
-                key={day}
-                onClick={() => onSelectDate(isSelected ? null : dateStr)}
-                onDoubleClick={() => onNavigateToDate?.(dateStr)}
-                className={cn(
-                  "aspect-square bg-[#121212] flex flex-col items-center justify-center gap-1 transition-all relative",
-                  isSelected && "bg-indigo-500/20 ring-1 ring-indigo-500/50",
-                  !isSelected && "hover:bg-white/5"
-                )}
+              <Popover 
+                key={day} 
+                open={isPopoverOpen} 
+                onOpenChange={(open) => {
+                  if (!open) setOpenPopoverDate(null)
+                }}
               >
-                <span className={cn(
-                  "text-sm font-medium",
-                  isTodayDate && "text-indigo-400",
-                  isSelected && "text-indigo-400",
-                  !isTodayDate && !isSelected && "text-gray-300"
-                )}>
-                  {day}
-                </span>
-                
-                {/* Dot indicators */}
-                <div className="flex items-center gap-0.5">
-                  {/* Course dot (green/indigo) */}
-                  {hasCourse && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                  )}
-                  {/* Task dot (blue or red for conflict) */}
-                  {hasTask && (
-                    <div className={cn(
-                      "w-1.5 h-1.5 rounded-full",
-                      hasConflict ? "bg-red-500" : "bg-sky-500"
-                    )} />
-                  )}
-                </div>
-                
-                {/* Today indicator */}
-                {isTodayDate && (
-                  <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[8px] text-indigo-400 font-medium">
-                    今
+                <PopoverTrigger asChild>
+                  <button
+                    onClick={() => handleDateClick(dateStr)}
+                    onDoubleClick={() => handleDateDoubleClick(dateStr)}
+                    className={cn(
+                      "aspect-square bg-[#121212] flex flex-col items-center justify-center gap-1 transition-all relative",
+                      isPopoverOpen && "bg-indigo-500/20 ring-1 ring-indigo-500/50",
+                      !isPopoverOpen && "hover:bg-white/5"
+                    )}
+                  >
+                    <span className={cn(
+                      "text-sm font-medium",
+                      isTodayDate && "text-indigo-400",
+                      isPopoverOpen && "text-indigo-400",
+                      !isTodayDate && !isPopoverOpen && "text-gray-300"
+                    )}>
+                      {day}
+                    </span>
+                    
+                    {/* Dot indicators */}
+                    <div className="flex items-center gap-0.5">
+                      {/* Course dot (indigo) */}
+                      {hasCourse && (
+                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                      )}
+                      {/* Task dot (blue or red for conflict) */}
+                      {hasTask && (
+                        <div className={cn(
+                          "w-1.5 h-1.5 rounded-full",
+                          hasConflict ? "bg-red-500" : "bg-sky-500"
+                        )} />
+                      )}
+                    </div>
+                    
+                    {/* Today indicator */}
+                    {isTodayDate && (
+                      <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[8px] text-indigo-400 font-medium">
+                        今
+                      </div>
+                    )}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent 
+                  className="w-72 p-0 bg-[#1e1e1e] border-white/10 shadow-xl"
+                  side="bottom"
+                  align="center"
+                  sideOffset={8}
+                >
+                  {/* Popover Header */}
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
+                    <h4 className="text-sm font-medium text-white">
+                      {currentMonth.month + 1}月{day}日
+                    </h4>
+                    <button
+                      onClick={() => handleDateDoubleClick(dateStr)}
+                      className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                    >
+                      查看详情
+                    </button>
                   </div>
-                )}
-              </button>
+                  
+                  {/* Popover Content */}
+                  <div className="max-h-[200px] overflow-y-auto p-2 space-y-1.5">
+                    {dateItems.length === 0 ? (
+                      <p className="text-center text-gray-500 text-xs py-3">
+                        暂无日程
+                      </p>
+                    ) : (
+                      dateItems.map((item, idx) => {
+                        if (item.type === 'course') {
+                          const course = item.data as Course
+                          return (
+                            <div 
+                              key={`course-${course.id}`}
+                              className="flex items-center gap-2 p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20"
+                            >
+                              <School className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-white truncate">{course.name}</p>
+                                <p className="text-[10px] text-gray-400">
+                                  {course.startTime}-{course.endTime}
+                                </p>
+                              </div>
+                            </div>
+                          )
+                        } else {
+                          const task = item.data as Task
+                          return (
+                            <div 
+                              key={`task-${task.id}`}
+                              className="flex items-center gap-2 p-2 rounded-lg bg-sky-500/10 border border-sky-500/20"
+                            >
+                              <Check className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-white truncate">{task.title}</p>
+                                <p className="text-[10px] text-gray-400">{task.time}</p>
+                              </div>
+                            </div>
+                          )
+                        }
+                      })
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
             )
           })}
         </div>
       </div>
 
-      {/* Selected Date Drawer */}
-      {selectedDate && (
-        <div className="border-t border-white/10 bg-[#1a1a1a] animate-in slide-in-from-bottom">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-            <h3 className="text-sm font-medium text-white">
-              {currentMonth.month + 1}月{parseInt(selectedDate.split('-')[1])}日 日程
-            </h3>
-            <button 
-              onClick={() => onSelectDate(null)}
-              className="p-1 text-gray-400 hover:text-white transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          
-          <div className="max-h-[280px] overflow-y-auto p-3 space-y-2">
-            {selectedDateItems.length === 0 ? (
-              <p className="text-center text-gray-500 text-sm py-4">
-                该日期暂无日程安排
-              </p>
-            ) : (
-              selectedDateItems.map((item, idx) => {
-                if (item.type === 'course') {
-                  const course = item.data as Course
-                  return (
-                    <div 
-                      key={`course-${course.id}`}
-                      className="flex items-center gap-3 p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20"
-                    >
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-indigo-500/30">
-                        <School className="w-4 h-4 text-indigo-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-white truncate">{course.name}</p>
-                        <p className="text-xs text-gray-400">
-                          <span className="font-mono text-indigo-400/70">{course.startTime}-{course.endTime}</span>
-                          <span className="mx-1.5 text-gray-600">|</span>
-                          {course.location}
-                        </p>
-                      </div>
-                    </div>
-                  )
-                } else {
-                  const task = item.data as Task
-                  return (
-                    <div 
-                      key={`task-${task.id}`}
-                      className="flex items-center gap-3 p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/20"
-                    >
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-sky-500/30">
-                        <Check className="w-4 h-4 text-sky-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-white truncate">{task.title}</p>
-                        <p className="text-xs text-gray-400">
-                          <span className="font-mono text-sky-400/70">{task.time}</span>
-                          <span className="mx-1.5 text-gray-600">|</span>
-                          {task.location || '未指定地点'}
-                        </p>
-                      </div>
-                    </div>
-                  )
-                }
-              })
-            )}
-          </div>
-        </div>
-      )}
+      
     </div>
   )
 }

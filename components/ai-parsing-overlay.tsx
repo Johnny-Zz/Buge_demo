@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Plus, Check, Copy } from "lucide-react"
+import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Plus, Check, Copy, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useTaskStore, Task } from "@/hooks/use-task-store"
+import { useTaskStore, Task, checkTaskConflict, checkTaskBufferWarning } from "@/hooks/use-task-store"
+import { useCourseStore, checkCourseConflict, checkCourseBufferWarning } from "@/hooks/use-course-store"
 
 // Task data for this overlay (宣讲会)
 const TASKS_DATA: Task[] = [
@@ -28,7 +29,10 @@ export function AiParsingOverlay({ isOpen, onClose, onSaveToTimeline }: AiParsin
   const [isAnimating, setIsAnimating] = useState(false)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [copied, setCopied] = useState(false)
+  const [showBufferWarning, setShowBufferWarning] = useState(false)
+  const [pendingTask, setPendingTask] = useState<Task | null>(null)
   const { addTask, tasks: storeTasks } = useTaskStore()
+  const { courses } = useCourseStore()
 
   useEffect(() => {
     if (isOpen) {
@@ -65,7 +69,59 @@ export function AiParsingOverlay({ isOpen, onClose, onSaveToTimeline }: AiParsin
   }
 
   const handleAddSingle = (task: Task) => {
+    // Calculate day of week for course conflict check
+    const [month, day] = task.date.split('-').map(Number)
+    const year = new Date().getFullYear()
+    const taskDate = new Date(year, month - 1, day)
+    const jsDay = taskDate.getDay()
+    const dayOfWeek = jsDay === 0 ? 7 : jsDay
+    
+    // Check for hard conflicts first
+    const taskConflict = checkTaskConflict(
+      { date: task.date, time: task.time, endTime: undefined },
+      storeTasks
+    )
+    const coursesOnDay = courses.filter(c => c.dayOfWeek === dayOfWeek)
+    const courseConflict = checkCourseConflict(
+      { startTime: task.time, endTime: task.time, dayOfWeek },
+      coursesOnDay
+    )
+    
+    if (taskConflict || courseConflict) {
+      // Hard conflict - don't add (could show error but for now just don't add)
+      return
+    }
+    
+    // Check for buffer warning
+    const taskBufferWarning = checkTaskBufferWarning(
+      { date: task.date, time: task.time, endTime: undefined },
+      storeTasks
+    )
+    const courseBufferWarning = checkCourseBufferWarning(
+      { startTime: task.time, endTime: task.time, dayOfWeek },
+      coursesOnDay
+    )
+    
+    if (taskBufferWarning || courseBufferWarning) {
+      setPendingTask(task)
+      setShowBufferWarning(true)
+      return
+    }
+    
     addTask(task)
+  }
+  
+  const handleConfirmBufferAdd = () => {
+    if (pendingTask) {
+      addTask(pendingTask)
+    }
+    setShowBufferWarning(false)
+    setPendingTask(null)
+  }
+  
+  const handleCancelBufferAdd = () => {
+    setShowBufferWarning(false)
+    setPendingTask(null)
   }
 
   const handleAddAllNew = () => {
@@ -89,6 +145,43 @@ export function AiParsingOverlay({ isOpen, onClose, onSaveToTimeline }: AiParsin
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
+      {/* Buffer Warning Dialog */}
+      {showBufferWarning && pendingTask && (
+        <>
+          <div 
+            className="absolute inset-0 bg-black/80 z-[60]"
+            onClick={handleCancelBufferAdd}
+          />
+          <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 max-w-sm mx-auto bg-[#1e1e1e] z-[70] rounded-2xl shadow-2xl border border-amber-500/30">
+            <div className="p-4 border-b border-white/10">
+              <h3 className="text-base font-semibold text-white text-center flex items-center justify-center gap-2">
+                <Clock className="w-5 h-5 text-amber-400" />
+                时间安排提醒
+              </h3>
+            </div>
+            <div className="p-4">
+              <p className="text-sm text-gray-300 text-center mb-4">
+                时间安排较紧（间隙不足10分钟），是否确定要添加 <span className="text-white font-medium">{pendingTask.title}</span>？
+              </p>
+              <div className="space-y-2">
+                <button
+                  onClick={handleConfirmBufferAdd}
+                  className="w-full py-2.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded-xl text-amber-400 text-sm font-medium transition-colors"
+                >
+                  是，确定添加
+                </button>
+                <button
+                  onClick={handleCancelBufferAdd}
+                  className="w-full py-2.5 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/40 rounded-xl text-gray-400 text-sm font-medium transition-colors"
+                >
+                  否，返回修改
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Backdrop */}
       <div 
         className={cn(

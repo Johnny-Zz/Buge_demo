@@ -2,6 +2,50 @@
 
 import { create } from "zustand"
 
+// Helper to convert time string to minutes for comparison
+function timeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(":").map(Number)
+  return hours * 60 + (minutes || 0)
+}
+
+// Sort tasks by date and time
+export function sortTasksByTime(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => {
+    // First compare by date
+    if (a.date !== b.date) {
+      return a.date.localeCompare(b.date)
+    }
+    // Then by time
+    return timeToMinutes(a.time) - timeToMinutes(b.time)
+  })
+}
+
+// Check if a new task conflicts with existing tasks (same date, overlapping time)
+export function checkTaskConflict(
+  newTask: { date: string; time: string; endTime?: string },
+  existingTasks: Task[],
+  excludeId?: string
+): Task | null {
+  const newStart = timeToMinutes(newTask.time)
+  // Assume 1 hour duration if no endTime provided
+  const newEnd = newTask.endTime ? timeToMinutes(newTask.endTime) : newStart + 60
+  
+  for (const task of existingTasks) {
+    if (excludeId && task.id === excludeId) continue
+    if (task.date !== newTask.date) continue
+    
+    const existingStart = timeToMinutes(task.time)
+    // Assume 1 hour duration for existing tasks
+    const existingEnd = existingStart + 60
+    
+    // Check for overlap
+    if (newStart < existingEnd && newEnd > existingStart) {
+      return task
+    }
+  }
+  return null
+}
+
 export interface Attachment {
   id: string
   name: string
@@ -50,14 +94,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (state.tasks.some((t) => t.id === task.id)) {
         return state
       }
-      return { tasks: [...state.tasks, task] }
+      // Auto-sort when adding
+      return { tasks: sortTasksByTime([...state.tasks, task]) }
     }),
   addTasks: (tasks) =>
     set((state) => {
       const newTasks = tasks.filter(
         (task) => !state.tasks.some((t) => t.id === task.id)
       )
-      return { tasks: [...state.tasks, ...newTasks] }
+      return { tasks: sortTasksByTime([...state.tasks, ...newTasks]) }
     }),
   updateTask: (taskId, updates) =>
     set((state) => ({

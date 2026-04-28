@@ -300,7 +300,7 @@ function mockAiProcess(
   // Step 5: Generate appropriate insight
   let insight: string
   if (hasExplicitEntities) {
-    insight = "精准识别：已为您提取明确的时间与地点"
+    insight = "精准识别：已为您提��明确的时间与地点"
   } else if (matchedHabit) {
     if (finalDate !== TODAY_DATE) {
       insight = "智能排程：依据习惯偏好，已安排至明日���佳时段"
@@ -2448,8 +2448,7 @@ function CourseCard({
 
   return (
     <div 
-      className="backdrop-blur-xl rounded-2xl transition-all duration-300 animate-in slide-in-from-bottom-2 fade-in bg-gradient-to-br from-indigo-500/10 to-blue-500/10 border border-indigo-500/20 shadow-lg overflow-hidden"
-      style={{ animationDelay: `${index * 100}ms` }}
+      className="backdrop-blur-xl rounded-2xl bg-gradient-to-br from-indigo-500/10 to-blue-500/10 border border-indigo-500/20 shadow-lg overflow-hidden"
     >
       {/* Collapsed Header - Always visible */}
       <button
@@ -2475,7 +2474,7 @@ function CourseCard({
 
       {/* Expanded Content */}
       {isExpanded && (
-        <div className="px-4 pb-4 pt-0 space-y-3 border-t border-indigo-500/10 animate-in fade-in slide-in-from-top-2">
+        <div className="px-4 pb-4 pt-0 space-y-3 border-t border-indigo-500/10">
           {isEditing ? (
             /* Edit Form */
             <div className="space-y-3 pt-3">
@@ -2631,14 +2630,13 @@ function TaskCard({
   return (
     <div 
       className={cn(
-        "backdrop-blur-xl rounded-2xl transition-all duration-300 animate-in slide-in-from-bottom-2 fade-in overflow-hidden",
+        "backdrop-blur-xl rounded-2xl overflow-hidden",
         showWarning 
           ? "border border-red-500/70 shadow-[0_0_15px_rgba(239,68,68,0.2)] bg-red-900/20" 
           : hasInsight
           ? "bg-gradient-to-br from-emerald-500/10 to-sky-500/10 border border-emerald-500/30 shadow-xl"
           : "bg-gradient-to-br from-white/10 to-white/5 border border-white/20 shadow-xl"
       )}
-      style={{ animationDelay: `${index * 100}ms` }}
     >
       {/* Compact View - Always Visible / Clickable Header */}
       <button

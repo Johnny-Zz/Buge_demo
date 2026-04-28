@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { ArrowLeft, Menu, Mic, Smile, Plus, Check, MapPin, Sparkles, Lightbulb, X, Send, Trash2, Edit3, ChevronDown, Pencil, StickyNote, Calendar, School, Loader2, Download, Settings, Inbox, ArrowRight, Clock } from "lucide-react"
+import { ArrowLeft, Menu, Mic, Smile, Plus, Check, MapPin, Sparkles, Lightbulb, X, Send, Trash2, Edit3, ChevronDown, Pencil, StickyNote, Calendar, School, Loader2, Download, Settings, Inbox, ArrowRight, Clock, MessageSquare, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react"
 import { useTaskStore, Task, checkTaskConflict } from "@/hooks/use-task-store"
 import { useCourseStore, Course, checkCourseConflict } from "@/hooks/use-course-store"
 import { cn } from "@/lib/utils"
@@ -332,6 +332,10 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   const [showManualAddModal, setShowManualAddModal] = useState(false)
   const [manualAddConflictError, setManualAddConflictError] = useState<string | null>(null)
   
+  // Dual-Mode View State
+  const [viewMode, setViewMode] = useState<'agent' | 'calendar'>('agent')
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null)
+  
   // Schedule modal states
   const [isImporting, setIsImporting] = useState(false)
   const [importSuccess, setImportSuccess] = useState(false)
@@ -538,26 +542,57 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
         </button>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto px-3 py-4">
-        {tasks.length === 0 && todayCourses.length === 0 && !isProcessing && !pendingConfirmation ? (
-          /* Empty State */
-          <div className="flex flex-col items-center justify-center h-full">
-            <div className="w-20 h-20 mb-6 rounded-full bg-gradient-to-br from-sky-300/20 to-sky-400/20 flex items-center justify-center">
-              <svg viewBox="0 0 100 100" className="w-12 h-12 opacity-50">
-                <ellipse cx="50" cy="58" rx="26" ry="22" fill="#7dd3fc"/>
-                <circle cx="68" cy="35" r="14" fill="#7dd3fc"/>
-                <polygon points="82,35 92,38 82,41" fill="#fbbf24"/>
-                <circle cx="72" cy="32" r="3" fill="#333"/>
-                <ellipse cx="45" cy="55" rx="15" ry="10" fill="#bae6fd"/>
-                <polygon points="24,55 12,50 12,68 24,63" fill="#bae6fd"/>
-              </svg>
+      {/* View Mode Toggle */}
+      <div className="flex items-center justify-center px-3 py-2 border-b border-white/5">
+        <div className="flex items-center bg-white/5 rounded-full p-0.5">
+          <button
+            onClick={() => setViewMode('agent')}
+            className={cn(
+              "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-medium transition-all",
+              viewMode === 'agent' 
+                ? "bg-sky-500/30 text-sky-400 shadow-sm" 
+                : "text-gray-400 hover:text-gray-300"
+            )}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            Agent 模式
+          </button>
+          <button
+            onClick={() => setViewMode('calendar')}
+            className={cn(
+              "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-medium transition-all",
+              viewMode === 'calendar' 
+                ? "bg-indigo-500/30 text-indigo-400 shadow-sm" 
+                : "text-gray-400 hover:text-gray-300"
+            )}
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            日历模式
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content - Agent Mode */}
+      {viewMode === 'agent' && (
+        <div className="flex-1 overflow-y-auto px-3 py-4">
+          {tasks.length === 0 && todayCourses.length === 0 && !isProcessing && !pendingConfirmation ? (
+            /* Empty State */
+            <div className="flex flex-col items-center justify-center h-full">
+              <div className="w-20 h-20 mb-6 rounded-full bg-gradient-to-br from-sky-300/20 to-sky-400/20 flex items-center justify-center">
+                <svg viewBox="0 0 100 100" className="w-12 h-12 opacity-50">
+                  <ellipse cx="50" cy="58" rx="26" ry="22" fill="#7dd3fc"/>
+                  <circle cx="68" cy="35" r="14" fill="#7dd3fc"/>
+                  <polygon points="82,35 92,38 82,41" fill="#fbbf24"/>
+                  <circle cx="72" cy="32" r="3" fill="#333"/>
+                  <ellipse cx="45" cy="55" rx="15" ry="10" fill="#bae6fd"/>
+                  <polygon points="24,55 12,50 12,68 24,63" fill="#bae6fd"/>
+                </svg>
+              </div>
+              <p className="text-gray-500 text-sm text-center leading-relaxed px-8">
+                添加新的任务，不鸽帮你更好地规划
+              </p>
             </div>
-            <p className="text-gray-500 text-sm text-center leading-relaxed px-8">
-              添加新的任务，不鸽帮你更好地规划
-            </p>
-          </div>
-        ) : (
+          ) : (
           <div className="space-y-4">
             {/* Processing State - Shows during smart scheduling */}
             {isProcessing && (
@@ -662,9 +697,22 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
             )}
           </div>
         )}
-      </div>
+        </div>
+      )}
 
-      {/* Bottom Input Area */}
+      {/* Main Content - Calendar Mode */}
+      {viewMode === 'calendar' && (
+        <CalendarView 
+          tasks={tasks}
+          courses={todayCourses}
+          allCourses={courses}
+          selectedDate={selectedCalendarDate}
+          onSelectDate={setSelectedCalendarDate}
+        />
+      )}
+
+      {/* Bottom Input Area - Only show in Agent mode */}
+      {viewMode === 'agent' && (
       <div className="px-3 py-2 pb-6 border-t border-white/5 space-y-3">
         {/* Quick Action Chips - Derived from local habits array */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
@@ -715,6 +763,7 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
           </button>
         </div>
       </div>
+      )}
 
       {/* Habit Settings Drawer */}
       {showHabitDrawer && (
@@ -1396,6 +1445,281 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
             setManualAddConflictError(null)
           }}
         />
+      )}
+    </div>
+  )
+}
+
+// Calendar View Component
+function CalendarView({
+  tasks,
+  courses,
+  allCourses,
+  selectedDate,
+  onSelectDate
+}: {
+  tasks: Task[]
+  courses: Course[]
+  allCourses: Course[]
+  selectedDate: string | null
+  onSelectDate: (date: string | null) => void
+}) {
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const now = new Date()
+    return { year: now.getFullYear(), month: now.getMonth() }
+  })
+
+  // Get days in month
+  const getDaysInMonth = (year: number, month: number) => {
+    return new Date(year, month + 1, 0).getDate()
+  }
+
+  // Get first day of month (0 = Sunday, 1 = Monday, etc.)
+  const getFirstDayOfMonth = (year: number, month: number) => {
+    return new Date(year, month, 1).getDay()
+  }
+
+  // Format date to "MM-DD" format
+  const formatDate = (day: number) => {
+    const month = String(currentMonth.month + 1).padStart(2, '0')
+    const dayStr = String(day).padStart(2, '0')
+    return `${month}-${dayStr}`
+  }
+
+  // Check if a date has tasks
+  const getDateIndicators = (day: number) => {
+    const dateStr = formatDate(day)
+    const dayTasks = tasks.filter(t => t.date === dateStr)
+    const hasTask = dayTasks.length > 0
+    
+    // Check for conflicts on this day
+    let hasConflict = false
+    for (let i = 0; i < dayTasks.length; i++) {
+      for (let j = i + 1; j < dayTasks.length; j++) {
+        const t1Start = parseInt(dayTasks[i].time.split(':')[0]) * 60 + parseInt(dayTasks[i].time.split(':')[1] || '0')
+        const t2Start = parseInt(dayTasks[j].time.split(':')[0]) * 60 + parseInt(dayTasks[j].time.split(':')[1] || '0')
+        // Simple overlap check (within 1 hour)
+        if (Math.abs(t1Start - t2Start) < 60) {
+          hasConflict = true
+          break
+        }
+      }
+    }
+
+    return { hasTask, hasConflict }
+  }
+
+  const daysInMonth = getDaysInMonth(currentMonth.year, currentMonth.month)
+  const firstDay = getFirstDayOfMonth(currentMonth.year, currentMonth.month)
+  const weekDays = ['日', '一', '二', '三', '四', '五', '六']
+  const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
+
+  // Navigate months
+  const prevMonth = () => {
+    setCurrentMonth(prev => {
+      if (prev.month === 0) {
+        return { year: prev.year - 1, month: 11 }
+      }
+      return { ...prev, month: prev.month - 1 }
+    })
+  }
+
+  const nextMonth = () => {
+    setCurrentMonth(prev => {
+      if (prev.month === 11) {
+        return { year: prev.year + 1, month: 0 }
+      }
+      return { ...prev, month: prev.month + 1 }
+    })
+  }
+
+  // Get tasks and courses for selected date
+  const getSelectedDateItems = () => {
+    if (!selectedDate) return []
+    
+    const dayTasks = tasks.filter(t => t.date === selectedDate)
+    
+    // Get courses for the day of week
+    const dateParts = selectedDate.split('-')
+    const month = parseInt(dateParts[0]) - 1
+    const day = parseInt(dateParts[1])
+    const date = new Date(currentMonth.year, month, day)
+    const dayOfWeek = date.getDay() || 7 // Convert Sunday 0 to 7
+    const dayCourses = allCourses.filter(c => c.dayOfWeek === dayOfWeek)
+    
+    // Combine and sort
+    const items: Array<{ type: 'task' | 'course'; data: Task | Course; time: string }> = [
+      ...dayTasks.map(t => ({ type: 'task' as const, data: t, time: t.time })),
+      ...dayCourses.map(c => ({ type: 'course' as const, data: c, time: c.startTime }))
+    ]
+    
+    return items.sort((a, b) => {
+      const aMin = parseInt(a.time.split(':')[0]) * 60 + parseInt(a.time.split(':')[1] || '0')
+      const bMin = parseInt(b.time.split(':')[0]) * 60 + parseInt(b.time.split(':')[1] || '0')
+      return aMin - bMin
+    })
+  }
+
+  const selectedDateItems = getSelectedDateItems()
+
+  // Check if date is today
+  const isToday = (day: number) => {
+    const now = new Date()
+    return now.getFullYear() === currentMonth.year && 
+           now.getMonth() === currentMonth.month && 
+           now.getDate() === day
+  }
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Calendar Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+        <button 
+          onClick={prevMonth}
+          className="p-2 text-gray-400 hover:text-white transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <h2 className="text-base font-semibold text-white">
+          {currentMonth.year}年 {monthNames[currentMonth.month]}
+        </h2>
+        <button 
+          onClick={nextMonth}
+          className="p-2 text-gray-400 hover:text-white transition-colors"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Week Days Header */}
+      <div className="grid grid-cols-7 border-b border-white/5">
+        {weekDays.map((day, i) => (
+          <div 
+            key={day} 
+            className={cn(
+              "py-2 text-center text-xs font-medium",
+              i === 0 || i === 6 ? "text-gray-500" : "text-gray-400"
+            )}
+          >
+            {day}
+          </div>
+        ))}
+      </div>
+
+      {/* Calendar Grid */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="grid grid-cols-7 gap-px bg-white/5">
+          {/* Empty cells for days before the first day */}
+          {Array.from({ length: firstDay }).map((_, i) => (
+            <div key={`empty-${i}`} className="aspect-square bg-[#121212]" />
+          ))}
+          
+          {/* Day cells */}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const day = i + 1
+            const dateStr = formatDate(day)
+            const { hasTask, hasConflict } = getDateIndicators(day)
+            const isSelected = selectedDate === dateStr
+            const isTodayDate = isToday(day)
+            
+            return (
+              <button
+                key={day}
+                onClick={() => onSelectDate(isSelected ? null : dateStr)}
+                className={cn(
+                  "aspect-square bg-[#121212] flex flex-col items-center justify-center gap-1 transition-all relative",
+                  isSelected && "bg-indigo-500/20 ring-1 ring-indigo-500/50",
+                  !isSelected && "hover:bg-white/5"
+                )}
+              >
+                <span className={cn(
+                  "text-sm font-medium",
+                  isTodayDate && "text-indigo-400",
+                  isSelected && "text-indigo-400",
+                  !isTodayDate && !isSelected && "text-gray-300"
+                )}>
+                  {day}
+                </span>
+                
+                {/* Dot indicators */}
+                <div className="flex items-center gap-1">
+                  {hasTask && (
+                    <div className={cn(
+                      "w-1.5 h-1.5 rounded-full",
+                      hasConflict ? "bg-red-500" : "bg-sky-500"
+                    )} />
+                  )}
+                </div>
+                
+                {/* Today indicator */}
+                {isTodayDate && (
+                  <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[8px] text-indigo-400 font-medium">
+                    今
+                  </div>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Selected Date Drawer */}
+      {selectedDate && (
+        <div className="border-t border-white/10 bg-[#1a1a1a] animate-in slide-in-from-bottom">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+            <h3 className="text-sm font-medium text-white">
+              {currentMonth.month + 1}月{parseInt(selectedDate.split('-')[1])}日 日程
+            </h3>
+            <button 
+              onClick={() => onSelectDate(null)}
+              className="p-1 text-gray-400 hover:text-white transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          
+          <div className="max-h-[200px] overflow-y-auto p-3 space-y-2">
+            {selectedDateItems.length === 0 ? (
+              <p className="text-center text-gray-500 text-sm py-4">
+                该日期暂无日程安排
+              </p>
+            ) : (
+              selectedDateItems.map((item, idx) => (
+                <div 
+                  key={`${item.type}-${idx}`}
+                  className={cn(
+                    "flex items-center gap-3 p-2.5 rounded-xl",
+                    item.type === 'course' 
+                      ? "bg-indigo-500/10 border border-indigo-500/20"
+                      : "bg-sky-500/10 border border-sky-500/20"
+                  )}
+                >
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
+                    item.type === 'course' ? "bg-indigo-500/30" : "bg-sky-500/30"
+                  )}>
+                    {item.type === 'course' ? (
+                      <School className="w-4 h-4 text-indigo-400" />
+                    ) : (
+                      <Check className="w-4 h-4 text-sky-400" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">
+                      {item.type === 'course' ? (item.data as Course).name : (item.data as Task).title}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {item.type === 'course' 
+                        ? `${(item.data as Course).startTime}-${(item.data as Course).endTime} | ${(item.data as Course).location}`
+                        : `${(item.data as Task).time} | ${(item.data as Task).location || '未指定地点'}`
+                      }
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

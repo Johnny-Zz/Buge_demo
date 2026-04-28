@@ -52,24 +52,21 @@ interface CourseStore {
   getTodayCourses: () => Course[]
 }
 
-// Default mock courses for today (Monday = 1)
+// Realistic university course schedule (anonymized)
 const DEFAULT_COURSES: Course[] = [
-  {
-    id: "course-1",
-    name: "数学分析 II",
-    startTime: "08:00",
-    endTime: "09:40",
-    location: "教学楼417室",
-    dayOfWeek: 1,
-  },
-  {
-    id: "course-2",
-    name: "网络空间安全数学基础",
-    startTime: "14:00",
-    endTime: "15:40",
-    location: "教学楼324室",
-    dayOfWeek: 1,
-  },
+  { id: "c1", name: "高等数学", dayOfWeek: 1, startTime: "08:00", endTime: "09:40", location: "主教学楼417" },
+  { id: "c2", name: "专业基础数学", dayOfWeek: 1, startTime: "14:00", endTime: "17:40", location: "主教学楼324" },
+  { id: "c3", name: "公共政治课", dayOfWeek: 1, startTime: "19:00", endTime: "21:30", location: "主教学楼413" },
+  { id: "c4", name: "算法核心实验", dayOfWeek: 2, startTime: "08:00", endTime: "11:40", location: "主教学楼503" },
+  { id: "c5", name: "体育选修", dayOfWeek: 2, startTime: "16:00", endTime: "17:40", location: "体育馆B区" },
+  { id: "c6", name: "计算机硬件基础", dayOfWeek: 2, startTime: "19:00", endTime: "21:30", location: "主教学楼409" },
+  { id: "c7", name: "硬件基础实验", dayOfWeek: 3, startTime: "08:00", endTime: "11:40", location: "主教学楼503" },
+  { id: "c8", name: "高等数学", dayOfWeek: 3, startTime: "14:00", endTime: "17:40", location: "主教学楼429" },
+  { id: "c9", name: "概率统计基础", dayOfWeek: 3, startTime: "19:00", endTime: "21:30", location: "主教学楼414" },
+  { id: "c10", name: "安全理论课", dayOfWeek: 4, startTime: "08:00", endTime: "11:40", location: "主教学楼401" },
+  { id: "c11", name: "职业发展指导", dayOfWeek: 4, startTime: "16:00", endTime: "17:40", location: "综合楼108" },
+  { id: "c12", name: "职业发展指导", dayOfWeek: 4, startTime: "19:00", endTime: "20:40", location: "综合楼108" },
+  { id: "c13", name: "算法理论课", dayOfWeek: 5, startTime: "10:00", endTime: "11:40", location: "主教学楼412" },
 ]
 
 export const useCourseStore = create<CourseStore>((set, get) => ({
@@ -97,9 +94,13 @@ export const useCourseStore = create<CourseStore>((set, get) => ({
     
   setCourses: (courses) => set({ courses: sortCoursesByTime(courses) }),
   
-  // Get today's courses (assuming today is Monday = 1)
+  // Get today's courses based on real current day
   getTodayCourses: () => {
-    const today = 1 // Monday for demo
+    const now = new Date()
+    // JavaScript: Sunday = 0, Monday = 1, ..., Saturday = 6
+    // Our format: Monday = 1, ..., Sunday = 7
+    const jsDay = now.getDay()
+    const today = jsDay === 0 ? 7 : jsDay // Convert Sunday from 0 to 7
     return get().courses.filter((c) => c.dayOfWeek === today)
   },
 }))

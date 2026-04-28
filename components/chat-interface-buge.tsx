@@ -23,9 +23,21 @@ const LOCATION_KEYWORDS = ["图书馆", "操场", "教室", "体育馆", "食堂
 // All available time slots for today (after 10:30 current time)
 const AVAILABLE_TIME_SLOTS = ["11:00", "11:30", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "17:30", "18:00", "19:00", "20:00", "21:00", "21:30"]
 
-// Current time simulation (10:30)
-const CURRENT_TIME = "10:30"
-const TODAY_DATE = "04-22"
+// Get current date in MM-DD format
+function getTodayDate(): string {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${month}-${day}`
+}
+
+// Get current time in HH:MM format
+function getCurrentTime(): string {
+  const now = new Date()
+  return now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+const TODAY_DATE = getTodayDate()
 
 // Convert time string to minutes for comparison
 function timeToMinutes(time: string): number {
@@ -1511,7 +1523,7 @@ function CalendarView({
 
   const daysInMonth = getDaysInMonth(currentMonth.year, currentMonth.month)
   const firstDay = getFirstDayOfMonth(currentMonth.year, currentMonth.month)
-  const weekDays = ['日', '一', '二', '三', '四', '五', '六']
+  const weekDays = ['日', '一', '二', '��', '四', '五', '六']
   const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
 
   // Navigate months

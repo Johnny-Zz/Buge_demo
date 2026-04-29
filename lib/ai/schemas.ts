@@ -1,4 +1,3 @@
-import { addMinutesToTime } from "@/lib/ai/date"
 import type { AiScene, AiTask } from "@/lib/ai/types"
 import { z } from "zod"
 
@@ -75,7 +74,7 @@ export function normalizeTaskShape(task: z.infer<typeof AiTaskSchema>): AiTask {
     taskName: task.taskName.trim(),
     date: task.date.trim(),
     startTime: task.startTime.trim(),
-    endTime: normalizedEndTime || addMinutesToTime(task.startTime.trim(), 60),
+    endTime: normalizedEndTime || undefined,
     location: normalizedLocation,
     endTimeInferred: !normalizedEndTime,
   }

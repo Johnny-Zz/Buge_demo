@@ -1,6 +1,7 @@
 "use client"
 
 import { ArrowLeft, Menu, Mic, Smile, Plus } from "lucide-react"
+import { getRelativeGroupDates } from "@/lib/group-parse-inputs"
 import { StatusBar } from "./status-bar"
 import { SummonAgentButton } from "./summon-agent-button"
 
@@ -11,6 +12,8 @@ interface ChatInterfaceMathProps {
 }
 
 export function ChatInterfaceMath({ onSummonAgent, onBack, isParsing = false }: ChatInterfaceMathProps) {
+  const { tomorrowLabel } = getRelativeGroupDates()
+
   return (
     <div className="flex flex-col h-screen bg-[#111111]">
       {/* Unified Status Bar */}
@@ -99,7 +102,7 @@ export function ChatInterfaceMath({ onSummonAgent, onBack, isParsing = false }: 
             <div className="bg-orange-500/10 border border-orange-500/30 backdrop-blur-sm rounded-xl rounded-tl-sm p-3">
               <p className="text-orange-300 text-[13px] font-medium mb-2">【作业提交通知】</p>
               <p className="text-white text-[15px] leading-relaxed">
-                请大家在明天（4月23日）晚上20:00前，将第三章课后习题证明（手写版扫描件）上传至超星学习通。
+                请大家在明天（{tomorrowLabel}）晚上20:00前，将第三章课后习题证明（手写版扫描件）上传至超星学习通。
               </p>
               <p className="text-white text-[15px] leading-relaxed mt-2">
                 命名格式：学号-姓名-第三章作业。

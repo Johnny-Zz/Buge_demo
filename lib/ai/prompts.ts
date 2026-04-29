@@ -12,7 +12,8 @@ function buildSharedRules(scene: AiScene) {
     `顶层 json 示例：${outputShape}`,
     "所有日期必须是 YYYY-MM-DD。",
     "所有时间必须是 24 小时制 HH:mm。",
-    "如果用户没有明确给出结束时间，默认结束时间 = 开始时间 + 60 分钟。",
+    "如果原文明确给出结束时间或持续时长，才输出 endTime。",
+    "如果原文只有开始时间，没有明确结束时间或持续时长，请省略 endTime，不要自行默认补 1 小时。",
     "如果地点不确定，输出空字符串，不要输出“待定”。",
     "必须基于 context.nowIso 和 context.timezone 推算“今天 / 明天 / 明晚 / 下周三”等相对时间。",
   ].join("\n")

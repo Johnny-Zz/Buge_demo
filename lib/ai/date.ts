@@ -29,7 +29,7 @@ export function getClientNowIso(): string {
 export function normalizeAiTask(task: AiTask): AiTask {
   const normalizedLocation = task.location?.trim() || ""
   const normalizedStartTime = task.startTime.trim()
-  const normalizedEndTime = task.endTime?.trim() || addMinutesToTime(normalizedStartTime, 60)
+  const normalizedEndTime = task.endTime?.trim() || undefined
 
   return {
     taskName: task.taskName.trim(),
@@ -37,6 +37,6 @@ export function normalizeAiTask(task: AiTask): AiTask {
     startTime: normalizedStartTime,
     endTime: normalizedEndTime,
     location: normalizedLocation,
-    endTimeInferred: task.endTimeInferred ?? !task.endTime?.trim(),
+    endTimeInferred: task.endTimeInferred ?? !normalizedEndTime,
   }
 }

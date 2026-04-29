@@ -102,7 +102,7 @@ function resolveEndTime(startTime: string, endTime?: string): string {
 }
 
 function formatTimeRange(startTime: string, endTime?: string): string {
-  return `${startTime} - ${resolveEndTime(startTime, endTime)}`
+  return `${startTime}-${resolveEndTime(startTime, endTime)}`
 }
 
 // Check if a time slot falls within a course block
@@ -549,6 +549,11 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   }
 
   const finalizeAiTask = (aiTask: AiTask, insight: string) => {
+    if (!aiTask.endTime?.trim()) {
+      promptForAiDuration(aiTask, insight)
+      return
+    }
+
     const storeTask = aiTaskToStoreTask(aiTask, "chat")
     const existingTask = findTaskByTitle(storeTask.title)
 
@@ -648,7 +653,7 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
           ? "智能排程：已结合习惯、课表与空闲时间生成建议"
           : "精准识别：已根据自然语言提取日程要素"
 
-      if (aiTask.endTimeInferred) {
+      if (!aiTask.endTime?.trim() || aiTask.endTimeInferred) {
         promptForAiDuration(aiTask, insight)
         return
       }
@@ -2337,15 +2342,15 @@ function CalendarView({
                           return (
                             <div 
                               key={`course-${course.id}`}
-                              className="flex items-center gap-2 p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20"
+                              className="flex flex-row items-center justify-between gap-3 rounded-lg border border-indigo-500/20 bg-indigo-500/10 p-2"
                             >
-                              <School className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-medium text-white truncate">{course.name}</p>
-                                <p className="text-[10px] text-gray-400">
-                                  {course.startTime}-{course.endTime}
-                                </p>
+                              <div className="flex min-w-0 items-center gap-2">
+                                <School className="h-3.5 w-3.5 flex-shrink-0 text-indigo-400" />
+                                <p className="truncate text-xs font-medium text-white">{course.name}</p>
                               </div>
+                              <p className="flex-shrink-0 font-mono text-[10px] text-indigo-300">
+                                {formatTimeRange(course.startTime, course.endTime)}
+                              </p>
                             </div>
                           )
                         } else {
@@ -2353,13 +2358,15 @@ function CalendarView({
                           return (
                             <div 
                               key={`task-${task.id}`}
-                              className="flex items-center gap-2 p-2 rounded-lg bg-sky-500/10 border border-sky-500/20"
+                              className="flex flex-row items-center justify-between gap-3 rounded-lg border border-sky-500/20 bg-sky-500/10 p-2"
                             >
-                              <Check className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-medium text-white truncate">{task.title}</p>
-                                <p className="text-[10px] text-gray-400">{task.time}</p>
+                              <div className="flex min-w-0 items-center gap-2">
+                                <Check className="h-3.5 w-3.5 flex-shrink-0 text-sky-400" />
+                                <p className="truncate text-xs font-medium text-white">{task.title}</p>
                               </div>
+                              <p className="flex-shrink-0 font-mono text-[10px] text-sky-300">
+                                {formatTimeRange(task.time, task.endTime)}
+                              </p>
                             </div>
                           )
                         }
@@ -2921,21 +2928,23 @@ function CourseCard({
     >
       <button
         onClick={() => !isEditing && setIsExpanded(!isExpanded)}
-        className="w-full p-4 flex items-center gap-3 text-left"
+        className="flex w-full flex-row items-center justify-between gap-3 px-4 py-3 text-left"
       >
-        <div className="w-8 h-8 rounded-lg bg-indigo-500/30 flex items-center justify-center flex-shrink-0">
-          <School className="w-4 h-4 text-indigo-400" />
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-500/25">
+            <School className="h-4 w-4 text-indigo-400" />
+          </div>
+          <p className="truncate text-sm font-medium text-white">{course.name}</p>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-white text-sm font-medium truncate">{course.name}</p>
-          <p className="mt-1 font-mono text-xs text-indigo-300/80">
-            {course.startTime} - {course.endTime}
-          </p>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <span className="font-mono text-xs font-semibold text-indigo-300/90">
+            {formatTimeRange(course.startTime, course.endTime)}
+          </span>
+          <ChevronDown className={cn(
+            "h-4 w-4 text-gray-400 transition-transform",
+            isExpanded && "rotate-180"
+          )} />
         </div>
-        <ChevronDown className={cn(
-          "w-4 h-4 text-gray-400 transition-transform",
-          isExpanded && "rotate-180"
-        )} />
       </button>
 
       <div className={cn(
@@ -3186,55 +3195,36 @@ function TaskCard({
     >
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full p-4 flex items-center justify-between text-left"
+        className="flex w-full flex-row items-center justify-between gap-3 px-4 py-3 text-left"
       >
-        <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
           <div className={cn(
-            "w-2.5 h-2.5 rounded-full flex-shrink-0 transition-colors duration-300",
+            "h-2.5 w-2.5 flex-shrink-0 rounded-full transition-colors duration-300",
             showWarning ? "bg-red-500 animate-pulse" : "bg-sky-400"
           )} />
-
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-white">{task.title}</p>
-            <div className="mt-1 flex items-center gap-2 text-xs">
-              <span className={cn(
-                "font-mono font-semibold transition-colors duration-300",
-                showWarning ? "text-red-400" : "text-sky-300"
-              )}>
-                {formatTimeRange(task.time, task.endTime)}
-              </span>
-              {showWarning && (
-                <span className="rounded bg-red-500/30 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
-                  ⚠️ 时间冲突
-                </span>
-              )}
-              {hasNotes && (
-                <span className="flex items-center gap-0.5 text-[10px] text-gray-400">
-                  <StickyNote className="w-3 h-3" />
-                  已备注
-                </span>
-              )}
-            </div>
-          </div>
+          <p className="truncate text-sm font-medium text-white">{task.title}</p>
+          {hasNotes && (
+            <StickyNote className="h-3.5 w-3.5 flex-shrink-0 text-gray-500" />
+          )}
+          {hasInsight && (
+            <Sparkles className="h-3.5 w-3.5 flex-shrink-0 text-emerald-400" />
+          )}
         </div>
-        
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onComplete(task.id)
-          }}
-          className="p-1.5 text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition-colors flex-shrink-0 mr-1"
-          title="快速完成"
-        >
-          <Check className="w-4 h-4" />
-        </button>
-        
-        <ChevronDown 
-          className={cn(
-            "w-5 h-5 text-gray-400 flex-shrink-0 transition-transform duration-200",
-            isExpanded && "rotate-180"
-          )} 
-        />
+
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <span className={cn(
+            "font-mono text-xs font-semibold transition-colors duration-300",
+            showWarning ? "text-red-400" : "text-sky-300"
+          )}>
+            {formatTimeRange(task.time, task.endTime)}
+          </span>
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 flex-shrink-0 text-gray-400 transition-transform duration-200",
+              isExpanded && "rotate-180"
+            )}
+          />
+        </div>
       </button>
 
       {/* Expanded View - Hidden by default */}

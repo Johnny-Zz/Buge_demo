@@ -1,6 +1,7 @@
 "use client"
 
 import { ArrowLeft, Menu, Mic, Smile, Plus } from "lucide-react"
+import { getRelativeGroupDates } from "@/lib/group-parse-inputs"
 import { StatusBar } from "./status-bar"
 import { SummonAgentButton } from "./summon-agent-button"
 
@@ -11,6 +12,9 @@ interface ChatInterfaceNoticeProps {
 }
 
 export function ChatInterfaceNotice({ onSummonAgent, onBack, isParsing = false }: ChatInterfaceNoticeProps) {
+  const { todayFullLabel, todayWeekday, tomorrowLabel } = getRelativeGroupDates()
+  const currentYear = new Date().getFullYear()
+
   return (
     <div className="flex flex-col h-screen bg-[#111111]">
       {/* Unified Status Bar */}
@@ -53,14 +57,14 @@ export function ChatInterfaceNotice({ onSummonAgent, onBack, isParsing = false }
             <div className="bg-[#262b38] rounded-lg p-4">
               <p className="text-white text-[15px] leading-relaxed whitespace-pre-line">
 {`【活动预告】"赢在创新大赛"第二十三季第一期
-时间：2026年4月23日（周四）14:30
+时间：${todayFullLabel}（${todayWeekday}）14:30
 地点：***校区***负一层报告厅
 承办学院：法学院/知识产权学院
 请提前15分钟微信签到入场。满10次计两个创新学分，先到先得。
 比赛通知链接：`}
               </p>
               <a href="#" className="text-[#5b9bd5] text-[15px] leading-relaxed underline block break-all">
-                https://***.edu.cn/2026/0421/***
+                {`https://***.edu.cn/${currentYear}/0421/***`}
               </a>
             </div>
           </div>
@@ -90,7 +94,7 @@ export function ChatInterfaceNotice({ onSummonAgent, onBack, isParsing = false }
             <div className="bg-[#262b38] rounded-lg p-4">
               <p className="text-white text-[15px] leading-relaxed whitespace-pre-line">
 {`【就业指导课开课通知】
-明天4月23日15点50分，***课室，企业导师给大家授课【简历制作与指导】，大家请携带好简历,课堂上再根据老师的指导完善修改！`}
+明天${tomorrowLabel}15点50分，***课室，企业导师给大家授课【简历制作与指导】，大家请携带好简历,课堂上再根据老师的指导完善修改！`}
               </p>
               <p className="text-[#5b9bd5] text-[15px] mt-2">@所有人</p>
             </div>

@@ -4,7 +4,7 @@ export interface AiTask {
   taskName: string
   date: string
   startTime: string
-  endTime: string
+  endTime?: string
   location?: string
   endTimeInferred?: boolean
 }

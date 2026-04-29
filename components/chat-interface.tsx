@@ -65,19 +65,10 @@ export function ChatInterface({ onSummonAgent, onBack, isParsing = false }: Chat
                 <span className="text-white">会议主题：</span>奖励计划经验宣讲会
               </p>
               <p className="text-white text-[15px] leading-relaxed">
-                <span className="text-white">会议时间：</span>2026/04/22
+                <span className="text-white">会议时间：</span>2026/04/22 14:30-16:30
               </p>
               <p className="text-white text-[15px] leading-relaxed">
-                14:30-16:30 (GMT+08:00) 中国标准时间 - 北京
-              </p>
-              <p className="text-white text-[15px] leading-relaxed mt-1">
-                <span className="text-white">重复周期：</span>
-              </p>
-              <p className="text-white text-[15px] leading-relaxed">
-                2026/04/<span className="text-[#5b9bd5]">22-2026</span>/06/03
-              </p>
-              <p className="text-white text-[15px] leading-relaxed">
-                14:30-16:30, 每周（周三）
+                (GMT+08:00) 中国标准时间 - 北京
               </p>
               
               <p className="text-white text-[15px] leading-relaxed mt-4">

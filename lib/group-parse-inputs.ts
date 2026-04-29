@@ -46,18 +46,15 @@ export function getRelativeGroupDates(baseDate = new Date()) {
   }
 }
 
-export function buildSecurityGroupParseText(baseDate = new Date()) {
-  const { todaySlash, nextWeekSlash, todayFullLabel, todayWeekday } = getRelativeGroupDates(baseDate)
-
+export function buildSecurityGroupParseText() {
   return `【奖励计划经验宣讲会通知】
 会议主题：奖励计划经验宣讲会
-会议时间：${todaySlash} 14:30-16:30 (GMT+08:00)
-重复周期：${todaySlash}-${nextWeekSlash}，每周${todayWeekday.replace("周", "")} 14:30-16:30
+会议时间：2026/04/22 14:30-16:30 (GMT+08:00)
 腾讯会议链接：https://meeting.tencent.com/dm/xxxx
 腾讯会议号：xxx-xxx-xxx
 
 【开源安全奖励计划经验宣讲会日程】
-讲座时间：${todayFullLabel}（${todayWeekday}）14:30—16:30
+讲座时间：2026年4月22日（周三）14:30—16:30
 讲座方式：腾讯会议（会议室号：xxx-xxx-xxx）
 讲座流程：
 14:30—15:00 原创开源软件赛道一等奖分享

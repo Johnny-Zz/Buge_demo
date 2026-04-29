@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Check, AlertTriangle, Pencil, Save, Inbox, Paperclip, FileImage, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useTaskStore, Task } from "@/hooks/use-task-store"
+import { hasTightBuffer, hasTimeOverlap, useTaskStore, Task } from "@/hooks/use-task-store"
 
 function timeToMinutes(time: string): number {
   const [hours, minutes] = time.split(":").map(Number)
@@ -13,7 +13,7 @@ function timeToMinutes(time: string): number {
 interface AiParsingOverlayNoticeProps {
   isOpen: boolean
   onClose: () => void
-  onSaveToTimeline: () => void
+  onSaveToTimeline: (targetDate?: string) => void
   tasks: Task[]
 }
 
@@ -228,12 +228,16 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
   }
 
   const handleAddAllNew = () => {
-    localTasks.forEach(task => {
+    const tasksToAdd = localTasks.filter((task) => !task.isExpired && !isTaskInStore(task))
+
+    tasksToAdd.forEach(task => {
       if (!task.isExpired && !isTaskInStore(task)) {
         addTask(task)
       }
     })
-    onSaveToTimeline()
+
+    const targetDate = tasksToAdd[0]?.date ?? localTasks.find((task) => !task.isExpired)?.date
+    onSaveToTimeline(targetDate)
   }
 
   const handleStartEdit = (taskId: string) => {
@@ -265,7 +269,9 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
   const newTasksCount = localTasks.filter(
     (task) => !task.isExpired && !isTaskInStore(task),
   ).length
-  const sortedTasks = [...localTasks].sort((a, b) => {
+  const sortedTasks = [...localTasks]
+    .filter((task) => !task.isExpired)
+    .sort((a, b) => {
     const dateComparison = a.date.localeCompare(b.date)
     if (dateComparison !== 0) {
       return dateComparison
@@ -273,15 +279,42 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
 
     return timeToMinutes(a.time) - timeToMinutes(b.time)
   })
-  const tightSchedulePair = sortedTasks.find((task, index) => {
-    const nextTask = sortedTasks[index + 1]
+  let scheduleAlertLevel: "overlap" | "buffer" | null = null
+  for (let index = 0; index < sortedTasks.length; index++) {
+    const currentTask = sortedTasks[index]
 
-    if (!nextTask || task.date !== nextTask.date) {
-      return false
+    for (let nextIndex = index + 1; nextIndex < sortedTasks.length; nextIndex++) {
+      const nextTask = sortedTasks[nextIndex]
+
+      if (currentTask.date !== nextTask.date) {
+        break
+      }
+
+      if (
+        hasTimeOverlap(
+          { startTime: currentTask.time, endTime: currentTask.endTime },
+          { startTime: nextTask.time, endTime: nextTask.endTime },
+        )
+      ) {
+        scheduleAlertLevel = "overlap"
+        break
+      }
+
+      if (
+        scheduleAlertLevel !== "overlap" &&
+        hasTightBuffer(
+          { startTime: currentTask.time, endTime: currentTask.endTime },
+          { startTime: nextTask.time, endTime: nextTask.endTime },
+        )
+      ) {
+        scheduleAlertLevel = "buffer"
+      }
     }
 
-    return timeToMinutes(nextTask.time) - timeToMinutes(task.time) < 90
-  })
+    if (scheduleAlertLevel === "overlap") {
+      break
+    }
+  }
 
   if (!isVisible) return null
 
@@ -330,12 +363,22 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
         {/* Content */}
         <div className="px-5 pb-4 space-y-3 max-h-[60vh] overflow-y-auto">
           {/* Conflict Warning Banner */}
-          {tightSchedulePair && (
-            <div className="flex items-start gap-3 p-3 bg-red-500/15 border border-red-500/40 rounded-xl">
-              <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+          {scheduleAlertLevel === "overlap" && (
+            <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-red-400 leading-relaxed">
-                  风险预警：检测到相邻任务时间较紧，请在加入日程前确认转场和准备时间。
+                <p className="text-sm font-medium leading-relaxed text-red-600">
+                  时空冲突：检测到任务时间重叠！
+                </p>
+              </div>
+            </div>
+          )}
+          {scheduleAlertLevel === "buffer" && (
+            <div className="flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 p-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-orange-600" />
+              <div className="flex-1">
+                <p className="text-sm font-medium leading-relaxed text-orange-600">
+                  转场提醒：相邻任务间隔小于10分钟，请注意安排转场。
                 </p>
               </div>
             </div>
@@ -596,7 +639,7 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
               </button>
             ) : (
               <button 
-                onClick={onSaveToTimeline}
+                onClick={() => onSaveToTimeline(localTasks.find((task) => !task.isExpired)?.date)}
                 className="flex-1 py-3 px-4 bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 rounded-xl font-medium transition-colors"
               >
                 查看日程

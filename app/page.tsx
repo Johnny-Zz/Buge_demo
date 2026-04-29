@@ -27,6 +27,7 @@ export default function Home() {
   const [showOverlay, setShowOverlay] = useState(false)
   const [currentView, setCurrentView] = useState<"list" | "chat">("list")
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
+  const [bugeTargetDate, setBugeTargetDate] = useState<string | null>(null)
   const [parsedTasksByGroup, setParsedTasksByGroup] = useState<Record<ParseGroupId, Task[]>>({
     "group-1": [],
     "group-2": [],
@@ -48,6 +49,9 @@ export default function Home() {
   })
 
   const handleSelectGroup = (groupId: string) => {
+    if (groupId === "group-3") {
+      setBugeTargetDate(null)
+    }
     setSelectedGroupId(groupId)
     setCurrentView("chat")
   }
@@ -57,8 +61,9 @@ export default function Home() {
     setShowOverlay(false)
   }
 
-  const handleSaveToTimeline = () => {
+  const handleSaveToTimeline = (targetDate?: string) => {
     setShowOverlay(false)
+    setBugeTargetDate(targetDate ?? null)
     setSelectedGroupId("group-3") // Navigate to BuGe chat
   }
 
@@ -102,7 +107,10 @@ export default function Home() {
     // BuGe Agent chat (group-3)
     if (selectedGroupId === "group-3") {
       return (
-        <ChatInterfaceBuge onBack={handleBackToList} />
+        <ChatInterfaceBuge
+          onBack={handleBackToList}
+          initialSelectedDate={bugeTargetDate ?? undefined}
+        />
       )
     }
 

@@ -5,7 +5,7 @@ import { ArrowLeft, Menu, Mic, Smile, Plus, Check, MapPin, Sparkles, Lightbulb, 
 import { aiTaskToStoreTask, buildAiContext, callBugeAi, createChatRouteRequest } from "@/lib/ai/client"
 import { addMinutesToTime } from "@/lib/ai/date"
 import type { AiTask } from "@/lib/ai/types"
-import { useTaskStore, Task, checkTaskConflict, checkTaskBufferWarning } from "@/hooks/use-task-store"
+import { useTaskStore, Task, checkTaskConflict, checkTaskBufferWarning, getOverlappingTaskIds, hasTimeOverlap } from "@/hooks/use-task-store"
 import { useCourseStore, Course, checkCourseConflict, checkCourseBufferWarning } from "@/hooks/use-course-store"
 import { useHabitStore } from "@/hooks/use-habit-store"
 import { toast } from "@/hooks/use-toast"
@@ -15,6 +15,7 @@ import { StatusBar } from "./status-bar"
 
 interface ChatInterfaceBugeProps {
   onBack: () => void
+  initialSelectedDate?: string
 }
 
 // Common keywords that might appear in habits
@@ -58,24 +59,9 @@ function areTimesConflicting(time1: string, time2: string): boolean {
   return diff < 90 // 1.5 hours = 90 minutes
 }
 
-// Universal conflict detection: Find all tasks that conflict with any other task
+// Universal conflict detection: Find all tasks that truly overlap in time
 function detectConflicts(tasks: Task[]): Set<string> {
-  const conflictingTaskIds = new Set<string>()
-  
-  for (let i = 0; i < tasks.length; i++) {
-    for (let j = i + 1; j < tasks.length; j++) {
-      const taskA = tasks[i]
-      const taskB = tasks[j]
-      
-      // Check if same date and times are within 1.5 hours
-      if (taskA.date === taskB.date && areTimesConflicting(taskA.time, taskB.time)) {
-        conflictingTaskIds.add(taskA.id)
-        conflictingTaskIds.add(taskB.id)
-      }
-    }
-  }
-  
-  return conflictingTaskIds
+  return getOverlappingTaskIds(tasks)
 }
 
 // Convert time string to minutes
@@ -368,7 +354,7 @@ interface PendingAiDurationSelection {
   insight: string
 }
 
-export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
+export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterfaceBugeProps) {
   const { tasks, removeTask, addTask, updateTask, findTaskByTitle, inboxTasks, removeFromInbox, updateInboxTask, moveFromInboxToSchedule } = useTaskStore()
   const { courses, getTodayCourses, updateCourse, addCourse, removeCourse, setCourses } = useCourseStore()
   const { habits, addHabit, updateHabit, removeHabit } = useHabitStore()
@@ -394,7 +380,7 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   
   // Dual-Mode View State
   const [viewMode, setViewMode] = useState<'agent' | 'calendar'>('agent')
-  const [selectedAgentDate, setSelectedAgentDate] = useState<string>(getTodayDate()) // For Agent mode date navigation
+  const [selectedAgentDate, setSelectedAgentDate] = useState<string>(initialSelectedDate || getTodayDate()) // For Agent mode date navigation
   
   // Course edit confirmation dialog
   const [showCourseEditConfirm, setShowCourseEditConfirm] = useState(false)
@@ -423,6 +409,13 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   
   // Get today's courses for timeline display
   const todayCourses = getTodayCourses()
+
+  useEffect(() => {
+    if (!initialSelectedDate) return
+
+    setSelectedAgentDate(initialSelectedDate)
+    setViewMode('agent')
+  }, [initialSelectedDate])
 
   // Universal conflict detection - detects any two tasks with overlapping times
   const conflictingTaskIds = detectConflicts(tasks)
@@ -498,7 +491,7 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
 
     if (validation.hardConflictMessage) {
       toast({
-        title: "无法加入日程",
+        title: "时空冲突：检测到任务时间重叠！",
         description: validation.hardConflictMessage,
         variant: "destructive",
       })
@@ -1748,7 +1741,7 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
 
             if (validation.hardConflictMessage) {
               toast({
-                title: "该时间段已存在其他日程",
+                title: "时空冲突：检测到任务时间重叠！",
                 description: validation.hardConflictMessage,
                 variant: "destructive",
               })
@@ -1940,12 +1933,12 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
             <div className="p-4 border-b border-white/10">
               <h2 className="text-base font-semibold text-white text-center flex items-center justify-center gap-2">
                 <Clock className="w-5 h-5 text-amber-400" />
-                时间安排提醒
+                转场提醒
               </h2>
             </div>
             <div className="p-4">
               <p className="text-sm text-gray-300 text-center mb-4">
-                时间安排较紧（间隙不足10分钟），是否确定要添加？
+                转场提醒：相邻任务间隔小于10分钟，请注意安排转场。
               </p>
               <div className="space-y-2">
                 <button
@@ -2090,9 +2083,12 @@ function CalendarView({
     // Check task-task conflicts
     for (let i = 0; i < dayTasks.length; i++) {
       for (let j = i + 1; j < dayTasks.length; j++) {
-        const t1Start = parseInt(dayTasks[i].time.split(':')[0]) * 60 + parseInt(dayTasks[i].time.split(':')[1] || '0')
-        const t2Start = parseInt(dayTasks[j].time.split(':')[0]) * 60 + parseInt(dayTasks[j].time.split(':')[1] || '0')
-        if (Math.abs(t1Start - t2Start) < 60) {
+        if (
+          hasTimeOverlap(
+            { startTime: dayTasks[i].time, endTime: dayTasks[i].endTime },
+            { startTime: dayTasks[j].time, endTime: dayTasks[j].endTime },
+          )
+        ) {
           hasConflict = true
           break
         }
@@ -2103,14 +2099,13 @@ function CalendarView({
     // Check task-course conflicts
     if (!hasConflict) {
       for (const task of dayTasks) {
-        const taskStart = parseInt(task.time.split(':')[0]) * 60 + parseInt(task.time.split(':')[1] || '0')
-        const taskEnd = taskStart + 60 // Assume 1 hour duration
-        
         for (const course of dayCourses) {
-          const courseStart = parseInt(course.startTime.split(':')[0]) * 60 + parseInt(course.startTime.split(':')[1] || '0')
-          const courseEnd = parseInt(course.endTime.split(':')[0]) * 60 + parseInt(course.endTime.split(':')[1] || '0')
-          
-          if (taskStart < courseEnd && taskEnd > courseStart) {
+          if (
+            hasTimeOverlap(
+              { startTime: task.time, endTime: task.endTime },
+              { startTime: course.startTime, endTime: course.endTime },
+            )
+          ) {
             hasConflict = true
             break
           }

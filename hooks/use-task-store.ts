@@ -2,10 +2,95 @@
 
 import { create } from "zustand"
 
+export const DEFAULT_TASK_DURATION_MINUTES = 60
+export const BUFFER_WARNING_MINUTES = 10
+
 // Helper to convert time string to minutes for comparison
 function timeToMinutes(time: string): number {
   const [hours, minutes] = time.split(":").map(Number)
   return hours * 60 + (minutes || 0)
+}
+
+export function getTaskEndMinutes(startTime: string, endTime?: string): number {
+  const startMinutes = timeToMinutes(startTime)
+
+  if (!endTime) {
+    return startMinutes + DEFAULT_TASK_DURATION_MINUTES
+  }
+
+  return timeToMinutes(endTime)
+}
+
+export function hasTimeOverlap(
+  rangeA: { startTime: string; endTime?: string },
+  rangeB: { startTime: string; endTime?: string },
+): boolean {
+  const startA = timeToMinutes(rangeA.startTime)
+  const endA = getTaskEndMinutes(rangeA.startTime, rangeA.endTime)
+  const startB = timeToMinutes(rangeB.startTime)
+  const endB = getTaskEndMinutes(rangeB.startTime, rangeB.endTime)
+
+  return startA < endB && endA > startB
+}
+
+export function getTimeGapMinutes(
+  rangeA: { startTime: string; endTime?: string },
+  rangeB: { startTime: string; endTime?: string },
+): number | null {
+  if (hasTimeOverlap(rangeA, rangeB)) {
+    return null
+  }
+
+  const startA = timeToMinutes(rangeA.startTime)
+  const endA = getTaskEndMinutes(rangeA.startTime, rangeA.endTime)
+  const startB = timeToMinutes(rangeB.startTime)
+  const endB = getTaskEndMinutes(rangeB.startTime, rangeB.endTime)
+
+  if (endA <= startB) {
+    return startB - endA
+  }
+
+  if (endB <= startA) {
+    return startA - endB
+  }
+
+  return null
+}
+
+export function hasTightBuffer(
+  rangeA: { startTime: string; endTime?: string },
+  rangeB: { startTime: string; endTime?: string },
+  bufferMinutes = BUFFER_WARNING_MINUTES,
+): boolean {
+  const gapMinutes = getTimeGapMinutes(rangeA, rangeB)
+  return gapMinutes !== null && gapMinutes < bufferMinutes
+}
+
+export function getOverlappingTaskIds(tasks: Task[]): Set<string> {
+  const overlappingTaskIds = new Set<string>()
+
+  for (let i = 0; i < tasks.length; i++) {
+    for (let j = i + 1; j < tasks.length; j++) {
+      const taskA = tasks[i]
+      const taskB = tasks[j]
+
+      if (taskA.date !== taskB.date) {
+        continue
+      }
+
+      if (
+        hasTimeOverlap(
+          { startTime: taskA.time, endTime: taskA.endTime },
+          { startTime: taskB.time, endTime: taskB.endTime },
+        )
+      ) {
+        overlappingTaskIds.add(taskA.id)
+        overlappingTaskIds.add(taskB.id)
+      }
+    }
+  }
+
+  return overlappingTaskIds
 }
 
 // Sort tasks by date and time
@@ -26,20 +111,16 @@ export function checkTaskConflict(
   existingTasks: Task[],
   excludeId?: string
 ): Task | null {
-  const newStart = timeToMinutes(newTask.time)
-  // Assume 1 hour duration if no endTime provided
-  const newEnd = newTask.endTime ? timeToMinutes(newTask.endTime) : newStart + 60
-  
   for (const task of existingTasks) {
     if (excludeId && task.id === excludeId) continue
     if (task.date !== newTask.date) continue
-    
-    const existingStart = timeToMinutes(task.time)
-    // Assume 1 hour duration for existing tasks
-    const existingEnd = task.endTime ? timeToMinutes(task.endTime) : existingStart + 60
-    
-    // Check for overlap
-    if (newStart < existingEnd && newEnd > existingStart) {
+
+    if (
+      hasTimeOverlap(
+        { startTime: newTask.time, endTime: newTask.endTime },
+        { startTime: task.time, endTime: task.endTime },
+      )
+    ) {
       return task
     }
   }
@@ -52,24 +133,23 @@ export function checkTaskBufferWarning(
   existingTasks: Task[],
   excludeId?: string
 ): { task: Task; type: 'before' | 'after' } | null {
-  const BUFFER_MINUTES = 10
-  const newStart = timeToMinutes(newTask.time)
-  const newEnd = newTask.endTime ? timeToMinutes(newTask.endTime) : newStart + 60
-  
   for (const task of existingTasks) {
     if (excludeId && task.id === excludeId) continue
     if (task.date !== newTask.date) continue
-    
-    const existingStart = timeToMinutes(task.time)
-    const existingEnd = task.endTime ? timeToMinutes(task.endTime) : existingStart + 60
-    
-    // Check if gap before new task is less than 10 min (existing ends right before new starts)
-    if (existingEnd <= newStart && newStart - existingEnd < BUFFER_MINUTES) {
-      return { task, type: 'after' }
-    }
-    
-    // Check if gap after new task is less than 10 min (new ends right before existing starts)
-    if (newEnd <= existingStart && existingStart - newEnd < BUFFER_MINUTES) {
+
+    if (
+      hasTightBuffer(
+        { startTime: newTask.time, endTime: newTask.endTime },
+        { startTime: task.time, endTime: task.endTime },
+      )
+    ) {
+      const newStart = timeToMinutes(newTask.time)
+      const existingStart = timeToMinutes(task.time)
+
+      if (existingStart < newStart) {
+        return { task, type: 'after' }
+      }
+
       return { task, type: 'before' }
     }
   }

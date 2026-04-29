@@ -157,7 +157,7 @@ function InlineEditForm({
 interface AiParsingOverlayCompactProps {
   isOpen: boolean
   onClose: () => void
-  onSaveToTimeline: () => void
+  onSaveToTimeline: (targetDate?: string) => void
   tasks: Task[]
   title?: string
 }
@@ -228,12 +228,18 @@ export function AiParsingOverlayCompact({
   }
 
   const handleAddAllNew = () => {
-    localTasks.forEach(task => {
+    const tasksToAdd = localTasks.filter(
+      (task) => !task.isExpired && !isTaskInStore(task) && !isTaskInInbox(task),
+    )
+
+    tasksToAdd.forEach(task => {
       if (!task.isExpired && !isTaskInStore(task) && !isTaskInInbox(task)) {
         addTask(task)
       }
     })
-    onSaveToTimeline()
+
+    const targetDate = tasksToAdd[0]?.date ?? localTasks.find((task) => !task.isExpired)?.date
+    onSaveToTimeline(targetDate)
   }
 
   const handleAddToInbox = (task: Task) => {
@@ -570,7 +576,7 @@ export function AiParsingOverlayCompact({
               </button>
             ) : (
               <button 
-                onClick={onSaveToTimeline}
+                onClick={() => onSaveToTimeline(localTasks.find((task) => !task.isExpired)?.date)}
                 className="flex-1 py-3 px-4 bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 rounded-xl font-medium transition-colors"
               >
                 查看日程

@@ -12,7 +12,7 @@ interface ChatInterfaceNoticeProps {
 }
 
 export function ChatInterfaceNotice({ onSummonAgent, onBack, isParsing = false }: ChatInterfaceNoticeProps) {
-  const { todayFullLabel, todayWeekday, tomorrowLabel } = getRelativeGroupDates()
+  const { todayFullLabel, todayWeekday, todayLabel } = getRelativeGroupDates()
   const currentYear = new Date().getFullYear()
 
   return (
@@ -94,7 +94,7 @@ export function ChatInterfaceNotice({ onSummonAgent, onBack, isParsing = false }
             <div className="bg-[#262b38] rounded-lg p-4">
               <p className="text-white text-[15px] leading-relaxed whitespace-pre-line">
 {`【就业指导课开课通知】
-明天${tomorrowLabel}15点50分，***课室，企业导师给大家授课【简历制作与指导】，大家请携带好简历,课堂上再根据老师的指导完善修改！`}
+今天${todayLabel}15点50分，***课室，企业导师给大家授课【简历制作与指导】，大家请携带好简历,课堂上再根据老师的指导完善修改！`}
               </p>
               <p className="text-[#5b9bd5] text-[15px] mt-2">@所有人</p>
             </div>

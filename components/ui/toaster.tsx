@@ -4,9 +4,7 @@ import { useToast } from '@/hooks/use-toast'
 import {
   Toast,
   ToastClose,
-  ToastDescription,
   ToastProvider,
-  ToastTitle,
   ToastViewport,
 } from '@/components/ui/toast'
 
@@ -18,11 +16,20 @@ export function Toaster() {
       {toasts.map(function ({ id, title, description, action, ...props }) {
         return (
           <Toast key={id} {...props}>
-            <div className="grid gap-1">
-              {title && <ToastTitle>{title}</ToastTitle>}
-              {description && (
-                <ToastDescription>{description}</ToastDescription>
-              )}
+            <div className="min-w-0 flex-1 pr-2">
+              <div className="overflow-hidden text-sm leading-5 text-red-400 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                {title ? (
+                  <span className="font-semibold text-red-300">
+                    {title}
+                  </span>
+                ) : null}
+                {title && description ? (
+                  <span className="mx-1 text-red-300/70">-</span>
+                ) : null}
+                {description ? (
+                  <span className="text-red-400/95">{description}</span>
+                ) : null}
+              </div>
             </div>
             {action}
             <ToastClose />

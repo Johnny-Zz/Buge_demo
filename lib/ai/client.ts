@@ -86,6 +86,7 @@ export function aiTaskToStoreTask(task: AiTask, idPrefix = "ai"): Task {
     endTime: normalized.endTime,
     location: normalized.location || undefined,
     priority: "P1",
+    isExpired: normalized.isExpired ?? false,
   }
 }
 

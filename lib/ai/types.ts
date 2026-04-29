@@ -7,6 +7,7 @@ export interface AiTask {
   endTime?: string
   location?: string
   endTimeInferred?: boolean
+  isExpired?: boolean
 }
 
 export interface HabitContext {

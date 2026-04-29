@@ -90,6 +90,7 @@ export interface Task {
   time: string
   endTime?: string
   location?: string
+  isExpired?: boolean
   priority: "P0" | "P1" | "P2"
   hasWarning?: boolean
   warningText?: string

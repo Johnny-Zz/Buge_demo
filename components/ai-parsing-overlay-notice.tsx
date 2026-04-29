@@ -205,6 +205,9 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
   }
 
   const handleAddSingle = (task: Task) => {
+    if (task.isExpired) {
+      return
+    }
     addTask(task)
   }
 
@@ -226,7 +229,7 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
 
   const handleAddAllNew = () => {
     localTasks.forEach(task => {
-      if (!isTaskInStore(task)) {
+      if (!task.isExpired && !isTaskInStore(task)) {
         addTask(task)
       }
     })
@@ -259,7 +262,9 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
   }
 
   // Count how many tasks are not yet added
-  const newTasksCount = localTasks.filter(t => !isTaskInStore(t)).length
+  const newTasksCount = localTasks.filter(
+    (task) => !task.isExpired && !isTaskInStore(task),
+  ).length
   const sortedTasks = [...localTasks].sort((a, b) => {
     const dateComparison = a.date.localeCompare(b.date)
     if (dateComparison !== 0) {
@@ -353,13 +358,18 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
             const isExpanded = expandedIds.has(task.id)
             const alreadyAdded = isTaskInStore(task)
             const isEditing = editingId === task.id
+            const isExpired = Boolean(task.isExpired)
 
             return (
               <div 
                 key={task.id}
                 className={cn(
                   "bg-[#2a2a2a]/80 backdrop-blur-sm rounded-xl border transition-all duration-200",
-                  alreadyAdded ? "border-emerald-500/30" : "border-white/5"
+                  isExpired
+                    ? "border-white/10 bg-zinc-900/70"
+                    : alreadyAdded
+                    ? "border-emerald-500/30"
+                    : "border-white/5"
                 )}
               >
                 {/* Compact Header - Always Visible */}
@@ -380,19 +390,33 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
                   {/* Task Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-white text-sm font-medium truncate">{task.title}</span>
                       <span className={cn(
-                        "flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold",
-                        task.priority === "P0" 
-                          ? "bg-orange-500/20 border border-orange-500/40 text-orange-400"
-                          : task.priority === "P1"
-                          ? "bg-amber-500/20 border border-amber-500/40 text-amber-400"
-                          : "bg-blue-500/20 border border-blue-500/40 text-blue-400"
+                        "text-sm font-medium truncate",
+                        isExpired ? "text-gray-400" : "text-white",
                       )}>
-                        {task.priority}
+                        {task.title}
                       </span>
+                      {isExpired ? (
+                        <span className="flex-shrink-0 rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-bold text-red-400">
+                          已过期
+                        </span>
+                      ) : (
+                        <span className={cn(
+                          "flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold",
+                          task.priority === "P0" 
+                            ? "bg-orange-500/20 border border-orange-500/40 text-orange-400"
+                            : task.priority === "P1"
+                            ? "bg-amber-500/20 border border-amber-500/40 text-amber-400"
+                            : "bg-blue-500/20 border border-blue-500/40 text-blue-400"
+                        )}>
+                          {task.priority}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5">
+                    <p className={cn(
+                      "text-xs mt-0.5",
+                      isExpired ? "text-gray-600" : "text-gray-500",
+                    )}>
                       {task.date} {task.time}
                     </p>
                   </div>
@@ -437,7 +461,13 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
                         {/* Add to Schedule Button */}
                         <button
                           onClick={() => handleAddSingle(task)}
-                          className="flex items-center gap-1 px-2 py-1.5 bg-[#0099FF]/15 hover:bg-[#0099FF]/25 border border-[#0099FF]/40 rounded-lg text-[#0099FF] text-[10px] font-medium transition-colors"
+                          disabled={isExpired}
+                          className={cn(
+                            "flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors",
+                            isExpired
+                              ? "cursor-not-allowed border border-white/10 bg-white/5 text-gray-500"
+                              : "bg-[#0099FF]/15 hover:bg-[#0099FF]/25 border border-[#0099FF]/40 text-[#0099FF]"
+                          )}
                           title="添加到日程"
                         >
                           <ArrowRight className="w-3 h-3" />
@@ -495,15 +525,19 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
                           {/* Priority Detail */}
                           <div className="flex items-center gap-2">
                             <Flame className="w-3.5 h-3.5 text-orange-400" />
-                            <span className="text-xs text-gray-400">优先级：</span>
-                            <span className={cn(
-                              "text-xs font-medium",
-                              task.priority === "P0" ? "text-orange-400" : 
-                              task.priority === "P1" ? "text-amber-400" : "text-blue-400"
-                            )}>
-                              {task.priority === "P0" ? "紧急重要" : 
-                               task.priority === "P1" ? "重要" : "一般"}
-                            </span>
+                            <span className="text-xs text-gray-400">{isExpired ? "状态：" : "优先级："}</span>
+                            {isExpired ? (
+                              <span className="text-xs font-medium text-red-400">已过期</span>
+                            ) : (
+                              <span className={cn(
+                                "text-xs font-medium",
+                                task.priority === "P0" ? "text-orange-400" : 
+                                task.priority === "P1" ? "text-amber-400" : "text-blue-400"
+                              )}>
+                                {task.priority === "P0" ? "紧急重要" : 
+                                 task.priority === "P1" ? "重要" : "一般"}
+                              </span>
+                            )}
                           </div>
 
                           {/* Notes Display */}

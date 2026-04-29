@@ -12,6 +12,7 @@ export const AiTaskSchema = z.object({
   startTime: hhmmSchema,
   endTime: optionalEndTimeSchema,
   location: optionalLocationSchema,
+  isExpired: z.boolean().optional().default(false),
 })
 
 export const SingleTaskEnvelopeSchema = z.object({
@@ -77,5 +78,6 @@ export function normalizeTaskShape(task: z.infer<typeof AiTaskSchema>): AiTask {
     endTime: normalizedEndTime || undefined,
     location: normalizedLocation,
     endTimeInferred: !normalizedEndTime,
+    isExpired: task.isExpired ?? false,
   }
 }

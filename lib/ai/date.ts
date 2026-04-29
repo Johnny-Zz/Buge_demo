@@ -38,5 +38,6 @@ export function normalizeAiTask(task: AiTask): AiTask {
     endTime: normalizedEndTime,
     location: normalizedLocation,
     endTimeInferred: task.endTimeInferred ?? !normalizedEndTime,
+    isExpired: task.isExpired ?? false,
   }
 }

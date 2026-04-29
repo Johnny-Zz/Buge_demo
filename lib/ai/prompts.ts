@@ -3,8 +3,8 @@ import type { AiScene, ChatRouteRequest } from "@/lib/ai/types"
 function buildSharedRules(scene: AiScene) {
   const outputShape =
     scene === "group_parse"
-      ? `{"tasks":[{"taskName":"提交第四题作业","date":"2026-04-30","startTime":"20:00","endTime":"21:00","location":"超星学习通"}]}`
-      : `{"task":{"taskName":"开组会","date":"2026-04-30","startTime":"20:00","endTime":"21:00","location":"主楼"}}`
+      ? `{"tasks":[{"taskName":"提交第四题作业","date":"2026-04-30","startTime":"20:00","endTime":"21:00","location":"超星学习通","isExpired":false}]}`
+      : `{"task":{"taskName":"开组会","date":"2026-04-30","startTime":"20:00","endTime":"21:00","location":"主楼","isExpired":false}}`
 
   return [
     "你是“不鸽 (Buge)” 的时间解析引擎。",
@@ -42,6 +42,9 @@ export function buildSystemPrompt(scene: AiScene): string {
 2. 任何需要执行的动作，例如签到、提交材料、交表、携带简历、携带证件、扫码报名、线上填写信息。
 3. 带有“通知 / 预告 / 提醒 / 开课 / 安排”等字样，但同时给出了明确时间或地点的校园事项，默认按“需要参与或执行”的待办处理，不要误判为普通资讯。
 如果通知里既有到场活动，又有必须完成但没有独立时间的准备动作，请把准备动作合并进主任务名，例如“参加就业指导课并带好简历”。
+请结合传入的当前系统时间 context.nowIso 与 context.timezone 进行对比。
+如果该任务不是周期性任务，且它明确的结束时间早于当前系统时间，请输出 "isExpired": true；否则输出 "isExpired": false。
+如果原文体现了“每周 / 重复 / 周期 / 每月 / 循环 / recurring”等周期性特征，不要因为本次时间已过就标记为过期。
 忽略寒暄、感谢、追问、讨论过程、重复内容、纯说明性闲聊，但不要忽略明确的校园通知、预告、课务安排、报名提醒。
 如果文本里有多个待办，全部放进 tasks 数组。
 如果没有明确待办，返回 {"tasks":[]}.
@@ -55,7 +58,7 @@ Few-shot 示例 1：
     timezone: "Asia/Shanghai",
   },
 })}
-输出：{"tasks":[{"taskName":"参加赢在创新大赛宣讲会","date":"2026-04-23","startTime":"14:30","endTime":"15:30","location":"报告厅"}]}
+输出：{"tasks":[{"taskName":"参加赢在创新大赛宣讲会","date":"2026-04-23","startTime":"14:30","endTime":"15:30","location":"报告厅","isExpired":false}]}
 
 Few-shot 示例 2：
 输入：${JSON.stringify({
@@ -66,7 +69,7 @@ Few-shot 示例 2：
     timezone: "Asia/Shanghai",
   },
 })}
-输出：{"tasks":[{"taskName":"参加就业指导课并带好简历","date":"2026-04-23","startTime":"15:50","endTime":"16:50","location":"教三201"}]}`
+输出：{"tasks":[{"taskName":"参加就业指导课并带好简历","date":"2026-04-23","startTime":"15:50","endTime":"16:50","location":"教三201","isExpired":false}]}`
 }
 
 export function buildUserPrompt(request: ChatRouteRequest): string {

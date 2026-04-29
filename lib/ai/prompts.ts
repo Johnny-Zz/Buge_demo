@@ -10,6 +10,9 @@ function buildSharedRules(scene: AiScene) {
     "你是“不鸽 (Buge)” 的时间解析引擎。",
     "你必须只输出合法 json，不要输出 markdown，不要输出解释，不要输出代码块。",
     `顶层 json 示例：${outputShape}`,
+    "CRITICAL：绝对忠于原文中的绝对日期。",
+    "如果原文明确写了绝对日期，即使这个日期已经过去，例如“4月22日”或“2026年4月22日”，也必须原样解析为真实日期，严禁擅自推算、平移、改写成距离今天最近的未来日期。",
+    "解析出原文真实日期后，必须立刻结合 context.nowIso 和 context.timezone 进行比对；只要该任务不是周期性任务，且真实结束时间早于当前系统时间，就必须输出 isExpired: true。",
     "所有日期必须是 YYYY-MM-DD。",
     "所有时间必须是 24 小时制 HH:mm。",
     "如果原文明确给出结束时间或持续时长，才输出 endTime。",
@@ -45,6 +48,7 @@ export function buildSystemPrompt(scene: AiScene): string {
 请结合传入的当前系统时间 context.nowIso 与 context.timezone 进行对比。
 如果该任务不是周期性任务，且它明确的结束时间早于当前系统时间，请输出 "isExpired": true；否则输出 "isExpired": false。
 如果原文体现了“每周 / 重复 / 周期 / 每月 / 循环 / recurring”等周期性特征，不要因为本次时间已过就标记为过期。
+如果原文明确写了过去的绝对日期，必须保留这个过去日期本身，不得改写为今天、明天或未来最近日期。
 忽略寒暄、感谢、追问、讨论过程、重复内容、纯说明性闲聊，但不要忽略明确的校园通知、预告、课务安排、报名提醒。
 如果文本里有多个待办，全部放进 tasks 数组。
 如果没有明确待办，返回 {"tasks":[]}.
@@ -69,7 +73,18 @@ Few-shot 示例 2：
     timezone: "Asia/Shanghai",
   },
 })}
-输出：{"tasks":[{"taskName":"参加就业指导课并带好简历","date":"2026-04-23","startTime":"15:50","endTime":"16:50","location":"教三201","isExpired":false}]}`
+输出：{"tasks":[{"taskName":"参加就业指导课并带好简历","date":"2026-04-23","startTime":"15:50","endTime":"16:50","location":"教三201","isExpired":false}]}
+
+Few-shot 示例 3：
+输入：${JSON.stringify({
+  scene: "group_parse",
+  input: "【讲座补充通知】请报名同学于2026年4月22日14:30到报告厅签到入场。",
+  context: {
+    nowIso: "2026-04-29T10:00:00+08:00",
+    timezone: "Asia/Shanghai",
+  },
+})}
+输出：{"tasks":[{"taskName":"到报告厅签到入场","date":"2026-04-22","startTime":"14:30","endTime":"15:30","location":"报告厅","isExpired":true}]}`
 }
 
 export function buildUserPrompt(request: ChatRouteRequest): string {

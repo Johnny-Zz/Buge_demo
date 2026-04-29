@@ -66,16 +66,16 @@ export function buildSecurityGroupParseText(baseDate = new Date()) {
 }
 
 export function buildNoticeGroupParseText(baseDate = new Date()) {
-  const { todayFullLabel, todayWeekday, todayLabel } = getRelativeGroupDates(baseDate)
+  const { tomorrowFullLabel, tomorrowWeekday, tomorrowLabel } = getRelativeGroupDates(baseDate)
 
   return `【活动预告】"赢在创新大赛"第二十三季第一期
-时间：${todayFullLabel}（${todayWeekday}）14:30
+时间：${tomorrowFullLabel}（${tomorrowWeekday}）14:30
 地点：***校区***负一层报告厅
 请提前15分钟微信签到入场。满10次计两个创新学分，先到先得。
 比赛通知链接：https://***.edu.cn/${baseDate.getFullYear()}/0421/***
 
 【就业指导课开课通知】
-今天${todayLabel}15点50分，***课室，企业导师给大家授课【简历制作与指导】，大家请携带好简历，课堂上再根据老师的指导完善修改。
+明天${tomorrowLabel}15点50分，***课室，企业导师给大家授课【简历制作与指导】，大家请携带好简历，课堂上再根据老师的指导完善修改。
 @所有人`
 }
 

@@ -371,8 +371,8 @@ export function AiParsingOverlayCompact({
                         {task.title}
                       </span>
                       {isExpired ? (
-                        <span className="flex-shrink-0 rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-bold text-red-400">
-                          已过期
+                        <span className="ml-2 flex-shrink-0 rounded bg-red-100 px-1 py-0.5 text-xs text-red-500">
+                          [已过期]
                         </span>
                       ) : (
                         <span className={cn(
@@ -439,7 +439,7 @@ export function AiParsingOverlayCompact({
                           className={cn(
                             "flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors",
                             isExpired
-                              ? "cursor-not-allowed border border-white/10 bg-white/5 text-gray-500"
+                              ? "cursor-not-allowed border border-gray-300 bg-gray-300 text-gray-500"
                               : "bg-[#0099FF]/15 hover:bg-[#0099FF]/25 border border-[#0099FF]/40 text-[#0099FF]"
                           )}
                           title="添加到日程"

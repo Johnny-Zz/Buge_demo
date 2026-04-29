@@ -1,13 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Plus, Check, Inbox, Pencil, Save, Paperclip, FileImage, ArrowRight } from "lucide-react"
+import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Check, Inbox, Pencil, Save, Paperclip, FileImage, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useTaskStore, Task, Attachment } from "@/hooks/use-task-store"
-
-interface ExtractedTask extends Task {
-  isExpanded?: boolean
-}
+import { useTaskStore, Task } from "@/hooks/use-task-store"
 
 // Comprehensive Inline Edit Form Component
 function InlineEditForm({ 
@@ -312,12 +308,18 @@ export function AiParsingOverlayCompact({
         {/* Extracted Tasks Summary */}
         <div className="px-5 pb-2">
           <p className="text-sm text-gray-400">
-            已从聊天中智能提取 <span className="text-[#0099FF] font-medium">{initialTasks.length}</span> 项待办任务
+            已从聊天中智能提取 <span className="text-[#0099FF] font-medium">{localTasks.length}</span> 项待办任务
           </p>
         </div>
 
         {/* Content - Compact Task List */}
         <div className="px-5 pb-4 space-y-2 max-h-[50vh] overflow-y-auto">
+          {localTasks.length === 0 && (
+            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-5 text-center">
+              <p className="text-sm text-white">这段聊天里暂未识别出明确待办</p>
+              <p className="mt-1 text-xs text-gray-500">可以稍后重试，或手动补充更明确的时间与动作</p>
+            </div>
+          )}
           {localTasks.map((task) => {
             const isExpanded = expandedIds.has(task.id)
             const alreadyAdded = isTaskInStore(task)

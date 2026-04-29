@@ -1,49 +1,20 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Plus, Check, AlertTriangle, Pencil, Save, Inbox, Paperclip, FileImage, ArrowRight } from "lucide-react"
+import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Check, AlertTriangle, Pencil, Save, Inbox, Paperclip, FileImage, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTaskStore, Task } from "@/hooks/use-task-store"
 
-// Task data for this overlay (创新大赛 + 就业课)
-const TASKS_DATA: Task[] = [
-  {
-    id: "innovation-contest",
-    title: "参加赢在创新大赛",
-    date: "04-23",
-    time: "14:30",
-    location: "***报告厅",
-    priority: "P0",
-    attachments: [
-      {
-        id: "att-1",
-        name: "创新大赛报名表.jpg",
-        type: "image",
-      }
-    ]
-  },
-  {
-    id: "career-guidance",
-    title: "就业指导课(带简历)",
-    date: "04-23",
-    time: "15:50",
-    location: "***课室",
-    priority: "P0",
-    notes: "记得带纸质简历和U盘",
-    attachments: [
-      {
-        id: "att-2",
-        name: "简历模板.pdf",
-        type: "document",
-      }
-    ]
-  },
-]
+function timeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(":").map(Number)
+  return hours * 60 + minutes
+}
 
 interface AiParsingOverlayNoticeProps {
   isOpen: boolean
   onClose: () => void
   onSaveToTimeline: () => void
+  tasks: Task[]
 }
 
 // Comprehensive Inline Edit Form Component
@@ -195,12 +166,12 @@ function InlineEditForm({
   )
 }
 
-export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline }: AiParsingOverlayNoticeProps) {
+export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, tasks }: AiParsingOverlayNoticeProps) {
   const [isVisible, setIsVisible] = useState(false)
   const [isAnimating, setIsAnimating] = useState(false)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [localTasks, setLocalTasks] = useState<Task[]>(TASKS_DATA)
+  const [localTasks, setLocalTasks] = useState<Task[]>(tasks)
   const { addTask, addToInbox, removeFromInbox, removeTask, tasks: storeTasks, inboxTasks } = useTaskStore()
 
   useEffect(() => {
@@ -208,7 +179,7 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline }: Ai
       setIsVisible(true)
       setExpandedIds(new Set())
       setEditingId(null)
-      setLocalTasks(TASKS_DATA)
+      setLocalTasks(tasks)
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setIsAnimating(true)
@@ -219,7 +190,7 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline }: Ai
       const timer = setTimeout(() => setIsVisible(false), 300)
       return () => clearTimeout(timer)
     }
-  }, [isOpen])
+  }, [isOpen, tasks])
 
   const toggleExpand = (taskId: string) => {
     setExpandedIds(prev => {
@@ -289,6 +260,23 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline }: Ai
 
   // Count how many tasks are not yet added
   const newTasksCount = localTasks.filter(t => !isTaskInStore(t)).length
+  const sortedTasks = [...localTasks].sort((a, b) => {
+    const dateComparison = a.date.localeCompare(b.date)
+    if (dateComparison !== 0) {
+      return dateComparison
+    }
+
+    return timeToMinutes(a.time) - timeToMinutes(b.time)
+  })
+  const tightSchedulePair = sortedTasks.find((task, index) => {
+    const nextTask = sortedTasks[index + 1]
+
+    if (!nextTask || task.date !== nextTask.date) {
+      return false
+    }
+
+    return timeToMinutes(nextTask.time) - timeToMinutes(task.time) < 90
+  })
 
   if (!isVisible) return null
 
@@ -337,19 +325,28 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline }: Ai
         {/* Content */}
         <div className="px-5 pb-4 space-y-3 max-h-[60vh] overflow-y-auto">
           {/* Conflict Warning Banner */}
-          <div className="flex items-start gap-3 p-3 bg-red-500/15 border border-red-500/40 rounded-xl">
-            <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-red-400 leading-relaxed">
-                风险预警：【创新大赛】(14:30) 与【就业指导课】(15:50) 时间过于紧凑，请提前规划转场路线！
-              </p>
+          {tightSchedulePair && (
+            <div className="flex items-start gap-3 p-3 bg-red-500/15 border border-red-500/40 rounded-xl">
+              <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-red-400 leading-relaxed">
+                  风险预警：检测到相邻任务时间较紧，请在加入日程前确认转场和准备时间。
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Extracted Tasks Summary */}
           <p className="text-sm text-gray-400">
             已从聊天中智能提取 <span className="text-[#0099FF] font-medium">{localTasks.length}</span> 项待办任务
           </p>
+
+          {localTasks.length === 0 && (
+            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-5 text-center">
+              <p className="text-sm text-white">这段通知里暂未识别出明确待办</p>
+              <p className="mt-1 text-xs text-gray-500">可以稍后重试，或手动补充更明确的行动信息</p>
+            </div>
+          )}
 
           {/* Compact Task List */}
           {localTasks.map((task) => {

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Plus, Check, Copy, AlertTriangle } from "lucide-react"
+import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Plus, Check, Copy } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTaskStore, Task, checkTaskConflict, checkTaskBufferWarning } from "@/hooks/use-task-store"
 import { useCourseStore, checkCourseConflict, checkCourseBufferWarning } from "@/hooks/use-course-store"

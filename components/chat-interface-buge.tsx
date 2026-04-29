@@ -2,8 +2,11 @@
 
 import { useState, useRef, useEffect } from "react"
 import { ArrowLeft, Menu, Mic, Smile, Plus, Check, MapPin, Sparkles, Lightbulb, X, Send, Trash2, Edit3, ChevronDown, Pencil, StickyNote, Calendar, School, Loader2, Download, Settings, Inbox, ArrowRight, Clock, MessageSquare, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react"
+import { aiTaskToStoreTask, buildAiContext, callBugeAi, createChatRouteRequest } from "@/lib/ai/client"
 import { useTaskStore, Task, checkTaskConflict, checkTaskBufferWarning } from "@/hooks/use-task-store"
 import { useCourseStore, Course, checkCourseConflict, checkCourseBufferWarning } from "@/hooks/use-course-store"
+import { useHabitStore } from "@/hooks/use-habit-store"
+import { toast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { StatusBar } from "./status-bar"
@@ -39,6 +42,7 @@ function getCurrentTime(): string {
 }
 
 const TODAY_DATE = getTodayDate()
+const CURRENT_TIME = getCurrentTime()
 
 // Convert time string to minutes for comparison
 function timeToMinutes(time: string): number {
@@ -219,6 +223,8 @@ interface MockAiResult {
   matchedHabit: string | null
 }
 
+// Retained as reference logic for future local fallback experiments.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function mockAiProcess(
   userInput: string, 
   habits: Array<{ id: string; icon: string; content: string }>,
@@ -328,6 +334,7 @@ interface PendingConfirmation {
   newData: {
     date: string
     time: string
+    endTime: string
     location: string
     insight: string
   }
@@ -336,6 +343,7 @@ interface PendingConfirmation {
 export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   const { tasks, removeTask, addTask, updateTask, findTaskByTitle, inboxTasks, removeFromInbox, updateInboxTask, moveFromInboxToSchedule } = useTaskStore()
   const { courses, getTodayCourses, updateCourse, addCourse, removeCourse, setCourses } = useCourseStore()
+  const { habits, addHabit, updateHabit, removeHabit } = useHabitStore()
   const [inputValue, setInputValue] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [showHabitDrawer, setShowHabitDrawer] = useState(false)
@@ -349,7 +357,7 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   const [showBufferWarning, setShowBufferWarning] = useState(false)
   const [pendingBufferTask, setPendingBufferTask] = useState<{
     type: 'manual' | 'edit' | 'parse'
-    taskData: { name: string; date: string; startTime: string; endTime: string; location: string }
+    taskData: { name: string; date: string; startTime: string; endTime: string; location: string; insight?: string }
     taskId?: string // For edit mode
   } | null>(null)
   
@@ -370,7 +378,6 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   const [importSuccess, setImportSuccess] = useState(false)
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null)
   const [isAddingCourse, setIsAddingCourse] = useState(false)
-  const [courseConflictError, setCourseConflictError] = useState<string | null>(null)
   
   // Inbox scheduling state
   const [schedulingTaskId, setSchedulingTaskId] = useState<string | null>(null)
@@ -378,9 +385,6 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   const [editingInboxTaskId, setEditingInboxTaskId] = useState<string | null>(null)
   const [scheduleTime, setScheduleTime] = useState("14:00")
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null)
-  const [habits, setHabits] = useState([
-    { id: "1", icon: "🎯", content: "健身偏好：习惯在傍晚 (17:00后) 运动" }
-  ])
   const [newHabit, setNewHabit] = useState("")
   const [editingHabitId, setEditingHabitId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState("")
@@ -397,22 +401,129 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
     return conflictingTaskIds.has(task.id)
   }
 
+  const validateTaskPlacement = (
+    taskData: { date: string; startTime: string; endTime: string; location: string },
+    excludeTaskId?: string,
+  ) => {
+    const [month, day] = taskData.date.split('-').map(Number)
+    const year = new Date().getFullYear()
+    const taskDate = new Date(year, month - 1, day)
+    const jsDay = taskDate.getDay()
+    const dayOfWeek = jsDay === 0 ? 7 : jsDay
+
+    const otherTasks = excludeTaskId ? tasks.filter((task) => task.id !== excludeTaskId) : tasks
+    const taskConflict = checkTaskConflict(
+      { date: taskData.date, time: taskData.startTime, endTime: taskData.endTime },
+      otherTasks,
+    )
+    const coursesOnDay = courses.filter((course) => course.dayOfWeek === dayOfWeek)
+    const courseConflict = checkCourseConflict(
+      { startTime: taskData.startTime, endTime: taskData.endTime, dayOfWeek },
+      coursesOnDay,
+    )
+
+    if (taskConflict) {
+      return {
+        hardConflictMessage: `时间冲突：与【${taskConflict.title}】(${taskConflict.time}) 重叠`,
+      }
+    }
+
+    if (courseConflict) {
+      return {
+        hardConflictMessage: `时间冲突：与课程【${courseConflict.name}】(${courseConflict.startTime}-${courseConflict.endTime}) 重叠`,
+      }
+    }
+
+    const taskBufferWarning = checkTaskBufferWarning(
+      { date: taskData.date, time: taskData.startTime, endTime: taskData.endTime },
+      otherTasks,
+    )
+    const courseBufferWarning = checkCourseBufferWarning(
+      { startTime: taskData.startTime, endTime: taskData.endTime || taskData.startTime, dayOfWeek },
+      coursesOnDay,
+    )
+
+    return {
+      hardConflictMessage: null,
+      needsBufferConfirmation: Boolean(taskBufferWarning || courseBufferWarning),
+    }
+  }
+
+  const applyParsedTask = (
+    task: Task,
+    insight: string,
+    existingTaskId?: string,
+  ) => {
+    const validation = validateTaskPlacement(
+      {
+        date: task.date,
+        startTime: task.time,
+        endTime: task.endTime || task.time,
+        location: task.location || "",
+      },
+      existingTaskId,
+    )
+
+    if (validation.hardConflictMessage) {
+      toast({
+        title: "无法加入日程",
+        description: validation.hardConflictMessage,
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (validation.needsBufferConfirmation) {
+      setPendingBufferTask({
+        type: "parse",
+        taskId: existingTaskId,
+        taskData: {
+          name: task.title,
+          date: task.date,
+          startTime: task.time,
+          endTime: task.endTime || task.time,
+          location: task.location || "",
+          insight,
+        },
+      })
+      setShowBufferWarning(true)
+      return
+    }
+
+    if (existingTaskId) {
+      updateTask(existingTaskId, {
+        title: task.title,
+        date: task.date,
+        time: task.time,
+        endTime: task.endTime,
+        location: task.location,
+        insight,
+      })
+      return
+    }
+
+    addTask({
+      ...task,
+      insight,
+    })
+  }
+
   const handleCompleteTask = (taskId: string) => {
     removeTask(taskId)
   }
 
   const handleSuggestionChipClick = (keyword: string) => {
-    // Dynamic keyword handling - just insert the keyword as a prompt
-    setInputValue(`我想${keyword}`)
+    const suggestion = extractActionName(keyword)
+    setInputValue(`我想${suggestion}`)
     inputRef.current?.focus()
   }
 
   const handleSendMessage = () => {
-    if (!inputValue.trim() || isProcessing) return
-    
-    // Trigger smart scheduling for any input
-    triggerSmartScheduling(inputValue)
+    const message = inputValue.trim()
+    if (!message || isProcessing) return
+
     setInputValue("")
+    void triggerSmartScheduling(message)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -422,59 +533,81 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
     }
   }
 
-  const triggerSmartScheduling = (userMessage: string) => {
+  const triggerSmartScheduling = async (userMessage: string) => {
     setIsProcessing(true)
 
-    // Phase 1 & 2: Processing state (1.5s), then cleanup
-    setTimeout(() => {
-      // Use mock AI engine to process the user input with existing tasks and courses for gap-finding
-      const aiResult = mockAiProcess(userMessage, habits, tasks, todayCourses)
-      
-      // Check for duplicate task by title
-      const existingTask = findTaskByTitle(aiResult.taskName)
-      
+    try {
+      const hasExplicitTime = Boolean(extractExplicitTime(userMessage))
+      const scene = hasExplicitTime ? "quick_task" : "habit_schedule"
+      const response = await callBugeAi(
+        createChatRouteRequest(
+          scene,
+          userMessage,
+          buildAiContext({
+            habits,
+            tasks,
+            courses,
+          }),
+        ),
+      )
+
+      const aiTask = Array.isArray(response) ? response[0] : response
+
+      if (!aiTask) {
+        throw new Error("AI 未返回可用的任务结果")
+      }
+
+      const storeTask = aiTaskToStoreTask(aiTask, "chat")
+      const insight =
+        scene === "habit_schedule"
+          ? "智能排程：已结合习惯、课表与空闲时间生成建议"
+          : "精准识别：已根据自然语言提取日程要素"
+      const existingTask = findTaskByTitle(storeTask.title)
+
       if (existingTask) {
-        // Duplicate found - show confirmation bubble instead of adding
         setPendingConfirmation({
           existingTaskId: existingTask.id,
           existingTaskTitle: existingTask.title,
           newData: {
-            date: aiResult.date,
-            time: aiResult.time,
-            location: aiResult.location,
-            insight: aiResult.insight
-          }
+            date: storeTask.date,
+            time: storeTask.time,
+            endTime: storeTask.endTime || storeTask.time,
+            location: storeTask.location || "",
+            insight,
+          },
         })
-        setIsProcessing(false)
-      } else {
-        // No duplicate - add task directly
-        const newTask: Task = {
-          id: `task-${Date.now()}`,
-          title: aiResult.taskName,
-          date: aiResult.date,
-          time: aiResult.time,
-          location: aiResult.location,
-          priority: "P1",
-          insight: aiResult.insight
-        }
-        
-        addTask(newTask)
-        setIsProcessing(false)
+        return
       }
-    }, 1500)
+
+      applyParsedTask(storeTask, insight)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "请稍后重试"
+      toast({
+        title: "不鸽 Agent 解析失败",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   const handleConfirmOverwrite = () => {
     if (!pendingConfirmation) return
-    
-    // Update existing task with new data
-    updateTask(pendingConfirmation.existingTaskId, {
-      date: pendingConfirmation.newData.date,
-      time: pendingConfirmation.newData.time,
-      location: pendingConfirmation.newData.location,
-      insight: pendingConfirmation.newData.insight
-    })
-    
+
+    applyParsedTask(
+      {
+        id: pendingConfirmation.existingTaskId,
+        title: pendingConfirmation.existingTaskTitle,
+        date: pendingConfirmation.newData.date,
+        time: pendingConfirmation.newData.time,
+        endTime: pendingConfirmation.newData.endTime,
+        location: pendingConfirmation.newData.location || undefined,
+        priority: "P1",
+      },
+      pendingConfirmation.newData.insight,
+      pendingConfirmation.existingTaskId,
+    )
     setPendingConfirmation(null)
   }
 
@@ -485,16 +618,15 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
 
   const handleAddHabit = () => {
     if (!newHabit.trim()) return
-    setHabits(prev => [...prev, {
-      id: Date.now().toString(),
+    addHabit({
       icon: "💡",
-      content: newHabit
-    }])
+      content: newHabit.trim(),
+    })
     setNewHabit("")
   }
 
   const handleDeleteHabit = (habitId: string) => {
-    setHabits(prev => prev.filter(h => h.id !== habitId))
+    removeHabit(habitId)
   }
 
   const handleEditHabit = (habit: { id: string; content: string }) => {
@@ -504,9 +636,7 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
 
   const handleSaveEditHabit = () => {
     if (!editingContent.trim() || !editingHabitId) return
-    setHabits(prev => prev.map(h => 
-      h.id === editingHabitId ? { ...h, content: editingContent } : h
-    ))
+    updateHabit(editingHabitId, { content: editingContent.trim() })
     setEditingHabitId(null)
     setEditingContent("")
   }
@@ -584,13 +714,6 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
       }
     }
     return getTime(a).localeCompare(getTime(b))
-  })
-
-  // Also keep sorted tasks for conflict detection
-  const sortedTasks = [...tasks].sort((a, b) => {
-    const dateTimeA = `${a.date} ${a.time}`
-    const dateTimeB = `${b.date} ${b.time}`
-    return dateTimeA.localeCompare(dateTimeB)
   })
 
   return (
@@ -767,7 +890,7 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
                       发现已有重复任务：【{pendingConfirmation.existingTaskTitle}】。是否使用新的时间和地点将其覆盖更新？
                     </p>
                     <p className="text-xs text-gray-400">
-                      新时间：{pendingConfirmation.newData.date} {pendingConfirmation.newData.time} | 新地点：{pendingConfirmation.newData.location}
+                      新时间：{pendingConfirmation.newData.date} {pendingConfirmation.newData.time}-{pendingConfirmation.newData.endTime} | 新地点：{pendingConfirmation.newData.location || "未提供"}
                     </p>
                     <div className="flex gap-2">
                       <button
@@ -791,13 +914,12 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
             {/* Unified Timeline - Courses + Tasks sorted chronologically */}
             {sortedTimelineItems.length > 0 && (
               <div className="space-y-3">
-                {sortedTimelineItems.map((item, index) => {
+                {sortedTimelineItems.map((item) => {
                   if (item.type === 'course') {
                     return (
-                      <CourseCard 
-                        key={item.data.id} 
-                        course={item.data} 
-                        index={index}
+                      <CourseCard
+                        key={item.data.id}
+                        course={item.data}
                         selectedDate={selectedAgentDate}
                         onEditCourse={handleCourseEditRequest}
                       />
@@ -807,7 +929,6 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
 <TaskCard
                         key={item.data.id}
                         task={item.data}
-                        index={index}
                         showWarning={shouldShowWarning(item.data)}
                         onComplete={handleCompleteTask}
                         onUpdateTask={updateTask}
@@ -1538,8 +1659,6 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
             setShowManualAddModal(false)
             setManualAddConflictError(null)
           }}
-          existingTasks={tasks}
-          existingCourses={courses}
           conflictError={manualAddConflictError}
           selectedDate={selectedAgentDate}
           onSave={(taskData) => {
@@ -1689,6 +1808,28 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
                         location: pendingBufferTask.taskData.location || undefined,
                         priority: "P1",
                       })
+                    } else if (pendingBufferTask.type === 'parse') {
+                      if (pendingBufferTask.taskId) {
+                        updateTask(pendingBufferTask.taskId, {
+                          title: pendingBufferTask.taskData.name,
+                          date: pendingBufferTask.taskData.date,
+                          time: pendingBufferTask.taskData.startTime,
+                          endTime: pendingBufferTask.taskData.endTime || undefined,
+                          location: pendingBufferTask.taskData.location || undefined,
+                          insight: pendingBufferTask.taskData.insight,
+                        })
+                      } else {
+                        addTask({
+                          id: `parse-${Date.now()}`,
+                          title: pendingBufferTask.taskData.name,
+                          date: pendingBufferTask.taskData.date,
+                          time: pendingBufferTask.taskData.startTime,
+                          endTime: pendingBufferTask.taskData.endTime || undefined,
+                          location: pendingBufferTask.taskData.location || undefined,
+                          priority: "P1",
+                          insight: pendingBufferTask.taskData.insight,
+                        })
+                      }
                     } else if (pendingBufferTask.type === 'edit' && pendingBufferTask.taskId) {
                       updateTask(pendingBufferTask.taskId, {
                         title: pendingBufferTask.taskData.name,
@@ -2030,7 +2171,7 @@ function CalendarView({
                         暂无日程
                       </p>
                     ) : (
-                      dateItems.map((item, idx) => {
+                      dateItems.map((item) => {
                         if (item.type === 'course') {
                           const course = item.data as Course
                           return (
@@ -2081,16 +2222,12 @@ function CalendarView({
 function ManualAddScheduleModal({
   isOpen,
   onClose,
-  existingTasks,
-  existingCourses,
   conflictError,
   selectedDate,
   onSave
 }: {
   isOpen: boolean
   onClose: () => void
-  existingTasks: Task[]
-  existingCourses: Course[]
   conflictError: string | null
   selectedDate: string
   onSave: (data: { name: string; date: string; startTime: string; endTime: string; location: string }) => void
@@ -2543,12 +2680,10 @@ function CourseEditForm({
 // Course Card Component - Collapsible/Accordion style with Edit functionality
 function CourseCard({ 
   course, 
-  index,
   onEditCourse,
   selectedDate
 }: { 
   course: Course
-  index: number
   onEditCourse?: (courseId: string, updates: Partial<Course>, selectedDate: string) => void
   selectedDate?: string
 }) {
@@ -2691,7 +2826,6 @@ function CourseCard({
 // Task Card Component - Collapsible/Accordion style with Inline Editing
 function TaskCard({
   task,
-  index,
   showWarning,
   onComplete,
   onUpdateTask,
@@ -2700,7 +2834,6 @@ function TaskCard({
   onBufferWarning
   }: {
   task: Task
-  index: number
   showWarning: boolean
   onComplete: (taskId: string) => void
   onUpdateTask: (taskId: string, updates: Partial<Task>) => void

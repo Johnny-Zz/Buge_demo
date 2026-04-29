@@ -88,6 +88,7 @@ export interface Task {
   title: string
   date: string  // Format: "04-22", "04-23"
   time: string
+  endTime?: string
   location?: string
   priority: "P0" | "P1" | "P2"
   hasWarning?: boolean

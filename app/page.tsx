@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { callBugeAi, aiTaskToStoreTask, buildAiContext, createChatRouteRequest } from "@/lib/ai/client"
 import { ChatInterface } from "@/components/chat-interface"
 import { ChatInterfaceNotice } from "@/components/chat-interface-notice"
 import { ChatInterfaceBuge } from "@/components/chat-interface-buge"
@@ -8,52 +9,16 @@ import { ChatInterfaceMath } from "@/components/chat-interface-math"
 import { ChatList } from "@/components/chat-list"
 import { AiParsingOverlayNotice } from "@/components/ai-parsing-overlay-notice"
 import { AiParsingOverlayCompact } from "@/components/ai-parsing-overlay-compact"
-import { Task } from "@/hooks/use-task-store"
-
-// Task data for Math Analysis group
-const MATH_TASKS: Task[] = [
-  {
-    id: "math-homework-ch3",
-    title: "第三章课后习题提交",
-    date: "04-23",
-    time: "20:00",
-    location: "超星学习通 (手写扫描)",
-    priority: "P1",
-    notes: "老师发的具体题目要求",
-    attachments: [
-      {
-        id: "att-math-1",
-        name: "老师发送的截图.jpg",
-        type: "image",
-      }
-    ],
-  },
-]
-
-// Task data for Security Reward group (开源安全奖励计划)
-const SECURITY_TASKS: Task[] = [
-  {
-    id: "security-experience-meeting",
-    title: "奖励计划经验宣讲会",
-    date: "04-22",
-    time: "14:30",
-    location: "腾讯会议 xxx-xxx-xxx",
-    priority: "P1",
-    notes: "重复周期：2026/04/22-2026/06/03，每周三 14:30-16:30\n入会链接：https://meeting.tencent.com/dm/xxxx",
-    attachments: [
-      {
-        id: "att-meeting-1",
-        name: "腾讯会议邀请.txt",
-        type: "document",
-      }
-    ],
-  },
-]
+import { toast } from "@/hooks/use-toast"
+import { GROUP_PARSE_INPUTS } from "@/lib/group-parse-inputs"
+import type { Task } from "@/hooks/use-task-store"
 
 interface ChatState {
   isUnread: boolean
   isMuted: boolean
 }
+
+type ParseGroupId = "group-1" | "group-2" | "group-4"
 
 // Chat group IDs for state initialization
 const CHAT_GROUP_IDS = ["group-3", "group-4", "group-2", "group-1"]
@@ -62,6 +27,16 @@ export default function Home() {
   const [showOverlay, setShowOverlay] = useState(false)
   const [currentView, setCurrentView] = useState<"list" | "chat">("list")
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
+  const [parsedTasksByGroup, setParsedTasksByGroup] = useState<Record<ParseGroupId, Task[]>>({
+    "group-1": [],
+    "group-2": [],
+    "group-4": [],
+  })
+  const [isParsingByGroup, setIsParsingByGroup] = useState<Record<ParseGroupId, boolean>>({
+    "group-1": false,
+    "group-2": false,
+    "group-4": false,
+  })
   
   // Lifted chat states - persists across view changes
   const [chatStates, setChatStates] = useState<Record<string, ChatState>>(() => {
@@ -87,6 +62,41 @@ export default function Home() {
     setSelectedGroupId("group-3") // Navigate to BuGe chat
   }
 
+  const handleSummonGroupAgent = async (groupId: ParseGroupId) => {
+    if (isParsingByGroup[groupId]) return
+
+    setIsParsingByGroup((prev) => ({ ...prev, [groupId]: true }))
+
+    try {
+      const response = await callBugeAi(
+        createChatRouteRequest(
+          "group_parse",
+          GROUP_PARSE_INPUTS[groupId],
+          buildAiContext({}),
+        ),
+      )
+
+      const parsedTasks = (Array.isArray(response) ? response : [response]).map((task, index) =>
+        aiTaskToStoreTask(task, `${groupId}-${index}`),
+      )
+
+      setParsedTasksByGroup((prev) => ({
+        ...prev,
+        [groupId]: parsedTasks,
+      }))
+      setShowOverlay(true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "请稍后重试"
+      toast({
+        title: "不鸽 Agent 解析失败",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setIsParsingByGroup((prev) => ({ ...prev, [groupId]: false }))
+    }
+  }
+
   // Render different chat interfaces based on selected group
   const renderChatInterface = () => {
     // BuGe Agent chat (group-3)
@@ -101,14 +111,15 @@ export default function Home() {
       return (
         <>
           <ChatInterfaceMath 
-            onSummonAgent={() => setShowOverlay(true)} 
+            onSummonAgent={() => handleSummonGroupAgent("group-4")}
             onBack={handleBackToList}
+            isParsing={isParsingByGroup["group-4"]}
           />
           <AiParsingOverlayCompact 
             isOpen={showOverlay} 
             onClose={() => setShowOverlay(false)}
             onSaveToTimeline={handleSaveToTimeline}
-            tasks={MATH_TASKS}
+            tasks={parsedTasksByGroup["group-4"]}
             title="不鸽 AI 解析完成"
           />
         </>
@@ -120,13 +131,15 @@ export default function Home() {
       return (
         <>
           <ChatInterfaceNotice 
-            onSummonAgent={() => setShowOverlay(true)} 
+            onSummonAgent={() => handleSummonGroupAgent("group-2")}
             onBack={handleBackToList}
+            isParsing={isParsingByGroup["group-2"]}
           />
           <AiParsingOverlayNotice 
             isOpen={showOverlay} 
             onClose={() => setShowOverlay(false)}
             onSaveToTimeline={handleSaveToTimeline}
+            tasks={parsedTasksByGroup["group-2"]}
           />
         </>
       )
@@ -136,14 +149,15 @@ export default function Home() {
     return (
       <>
         <ChatInterface 
-          onSummonAgent={() => setShowOverlay(true)} 
+          onSummonAgent={() => handleSummonGroupAgent("group-1")}
           onBack={handleBackToList}
+          isParsing={isParsingByGroup["group-1"]}
         />
         <AiParsingOverlayCompact 
           isOpen={showOverlay} 
           onClose={() => setShowOverlay(false)}
           onSaveToTimeline={handleSaveToTimeline}
-          tasks={SECURITY_TASKS}
+          tasks={parsedTasksByGroup["group-1"]}
           title="不鸽 AI 解析完成"
         />
       </>

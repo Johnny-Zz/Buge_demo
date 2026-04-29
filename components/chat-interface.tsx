@@ -5,11 +5,12 @@ import { StatusBar } from "./status-bar"
 import { SummonAgentButton } from "./summon-agent-button"
 
 interface ChatInterfaceProps {
-  onSummonAgent: () => void
+  onSummonAgent: () => void | Promise<void>
   onBack: () => void
+  isParsing?: boolean
 }
 
-export function ChatInterface({ onSummonAgent, onBack }: ChatInterfaceProps) {
+export function ChatInterface({ onSummonAgent, onBack, isParsing = false }: ChatInterfaceProps) {
   return (
     <div className="flex flex-col h-screen bg-[#111111]">
       {/* Unified Status Bar */}
@@ -184,7 +185,7 @@ export function ChatInterface({ onSummonAgent, onBack }: ChatInterfaceProps) {
         </div>
 
         {/* Summon Agent Button - Reusable component inside scrollable area */}
-        <SummonAgentButton onSummonAgent={onSummonAgent} />
+        <SummonAgentButton onSummonAgent={onSummonAgent} isLoading={isParsing} />
       </div>
 
       {/* Input area - QQ style */}

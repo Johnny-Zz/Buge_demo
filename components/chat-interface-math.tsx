@@ -5,11 +5,12 @@ import { StatusBar } from "./status-bar"
 import { SummonAgentButton } from "./summon-agent-button"
 
 interface ChatInterfaceMathProps {
-  onSummonAgent: () => void
+  onSummonAgent: () => void | Promise<void>
   onBack: () => void
+  isParsing?: boolean
 }
 
-export function ChatInterfaceMath({ onSummonAgent, onBack }: ChatInterfaceMathProps) {
+export function ChatInterfaceMath({ onSummonAgent, onBack, isParsing = false }: ChatInterfaceMathProps) {
   return (
     <div className="flex flex-col h-screen bg-[#111111]">
       {/* Unified Status Bar */}
@@ -128,7 +129,7 @@ export function ChatInterfaceMath({ onSummonAgent, onBack }: ChatInterfaceMathPr
         </div>
 
         {/* Summon Agent Button - Reusable component inside scrollable area */}
-        <SummonAgentButton onSummonAgent={onSummonAgent} />
+        <SummonAgentButton onSummonAgent={onSummonAgent} isLoading={isParsing} />
       </div>
 
       {/* Input Area */}

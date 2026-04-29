@@ -1,4 +1,5 @@
 export type AiScene = "quick_task" | "group_parse" | "habit_schedule"
+export type AiTaskType = "event" | "deadline"
 
 export interface AiTask {
   taskName: string
@@ -6,6 +7,8 @@ export interface AiTask {
   startTime: string
   endTime?: string
   location?: string
+  taskType?: AiTaskType
+  sourceMessageId?: string
   endTimeInferred?: boolean
   isExpired?: boolean
 }
@@ -39,6 +42,11 @@ export interface ChatRouteRequest {
     habits?: HabitContext[]
     tasks?: TaskContext[]
     courses?: CourseContext[]
+    currentSchedule?: {
+      date: string
+      tasks?: TaskContext[]
+      courses?: CourseContext[]
+    }
   }
 }
 

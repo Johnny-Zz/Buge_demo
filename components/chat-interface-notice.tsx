@@ -1,7 +1,9 @@
 "use client"
 
 import { ArrowLeft, Menu, Mic, Smile, Plus } from "lucide-react"
-import { getRelativeGroupDates } from "@/lib/group-parse-inputs"
+import { getRelativeGroupDates, NOTICE_MESSAGE_IDS } from "@/lib/group-parse-inputs"
+import { useTaskStore } from "@/hooks/use-task-store"
+import { cn } from "@/lib/utils"
 import { StatusBar } from "./status-bar"
 import { SummonAgentButton } from "./summon-agent-button"
 
@@ -13,7 +15,14 @@ interface ChatInterfaceNoticeProps {
 
 export function ChatInterfaceNotice({ onSummonAgent, onBack, isParsing = false }: ChatInterfaceNoticeProps) {
   const { tomorrowFullLabel, tomorrowWeekday, tomorrowLabel } = getRelativeGroupDates()
+  const { processedMessageIds } = useTaskStore()
   const currentYear = new Date().getFullYear()
+  const innovationNoticeProcessed = processedMessageIds.includes(
+    NOTICE_MESSAGE_IDS.innovationNotice,
+  )
+  const careerCourseProcessed = processedMessageIds.includes(
+    NOTICE_MESSAGE_IDS.careerCourseNotice,
+  )
 
   return (
     <div className="flex flex-col h-screen bg-[#111111]">
@@ -51,10 +60,20 @@ export function ChatInterfaceNotice({ onSummonAgent, onBack, isParsing = false }
             {/* Sender name */}
             <div className="flex items-center gap-1.5 mb-1">
               <span className="text-sm text-gray-400">学习委员</span>
+              {innovationNoticeProcessed && (
+                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-300">
+                  ✅ 已添加入库
+                </span>
+              )}
             </div>
 
             {/* Message Content */}
-            <div className="bg-[#262b38] rounded-lg p-4">
+            <div
+              className={cn(
+                "rounded-lg p-4",
+                innovationNoticeProcessed ? "bg-[#262b38]/70 opacity-80" : "bg-[#262b38]",
+              )}
+            >
               <p className="text-white text-[15px] leading-relaxed whitespace-pre-line">
 {`【活动预告】"赢在创新大赛"第二十三季第一期
 时间：${tomorrowFullLabel}（${tomorrowWeekday}）14:30
@@ -88,10 +107,20 @@ export function ChatInterfaceNotice({ onSummonAgent, onBack, isParsing = false }
             {/* Sender name */}
             <div className="flex items-center gap-1.5 mb-1">
               <span className="text-sm text-gray-400">辅导员</span>
+              {careerCourseProcessed && (
+                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-300">
+                  ✅ 已添加入库
+                </span>
+              )}
             </div>
 
             {/* Message Content */}
-            <div className="bg-[#262b38] rounded-lg p-4">
+            <div
+              className={cn(
+                "rounded-lg p-4",
+                careerCourseProcessed ? "bg-[#262b38]/70 opacity-80" : "bg-[#262b38]",
+              )}
+            >
               <p className="text-white text-[15px] leading-relaxed whitespace-pre-line">
 {`【就业指导课开课通知】
 明天${tomorrowLabel}14点30分，***课室，企业导师给大家授课【简历制作与指导】，大家请携带好简历,课堂上再根据老师的指导完善修改！`}

@@ -172,7 +172,7 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [editingId, setEditingId] = useState<string | null>(null)
   const [localTasks, setLocalTasks] = useState<Task[]>(tasks)
-  const { addTask, addToInbox, removeFromInbox, removeTask, tasks: storeTasks, inboxTasks } = useTaskStore()
+  const { addTask, addToInbox, removeFromInbox, removeTask, tasks: storeTasks, inboxTasks, markMessageAsProcessed } = useTaskStore()
 
   useEffect(() => {
     if (isOpen) {
@@ -209,6 +209,9 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
       return
     }
     addTask(task)
+    if (task.sourceMessageId) {
+      markMessageAsProcessed(task.sourceMessageId)
+    }
   }
 
   const handleRemoveFromSchedule = (task: Task) => {
@@ -233,6 +236,9 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
     tasksToAdd.forEach(task => {
       if (!task.isExpired && !isTaskInStore(task)) {
         addTask(task)
+        if (task.sourceMessageId) {
+          markMessageAsProcessed(task.sourceMessageId)
+        }
       }
     })
 

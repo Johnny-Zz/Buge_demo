@@ -12,6 +12,45 @@ interface BuildAiContextOptions {
   timezone?: string
 }
 
+function formatIsoDateForTimezone(nowIso: string, timezone: string): string {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+  const parts = formatter.formatToParts(new Date(nowIso))
+  const year = parts.find((part) => part.type === "year")?.value
+  const month = parts.find((part) => part.type === "month")?.value
+  const day = parts.find((part) => part.type === "day")?.value
+
+  if (year && month && day) {
+    return `${year}-${month}-${day}`
+  }
+
+  return formatter.format(new Date(nowIso))
+}
+
+function getDayOfWeekForTimezone(nowIso: string, timezone: string): number {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    weekday: "short",
+  })
+  const weekday = formatter.format(new Date(nowIso))
+  const weekDayMap: Record<string, number> = {
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+    Sun: 7,
+  }
+
+  const fallbackWeekday = new Date(nowIso).getDay()
+  return weekDayMap[weekday] ?? (fallbackWeekday === 0 ? 7 : fallbackWeekday)
+}
+
 export function buildAiContext({
   habits = [],
   tasks = [],
@@ -19,6 +58,26 @@ export function buildAiContext({
   nowIso = getClientNowIso(),
   timezone = getClientTimezone(),
 }: BuildAiContextOptions): ChatRouteRequest["context"] {
+  const currentScheduleDate = formatIsoDateForTimezone(nowIso, timezone)
+  const currentScheduleDayOfWeek = getDayOfWeekForTimezone(nowIso, timezone)
+  const currentScheduleTasks = tasks
+    .filter((task) => mmDdToIso(task.date, nowIso) === currentScheduleDate)
+    .map((task) => ({
+      title: task.title,
+      date: mmDdToIso(task.date, nowIso),
+      time: task.time,
+      endTime: task.endTime,
+    }))
+  const currentScheduleCourses = courses
+    .filter((course) => course.dayOfWeek === currentScheduleDayOfWeek)
+    .map((course) => ({
+      name: course.name,
+      dayOfWeek: course.dayOfWeek,
+      startTime: course.startTime,
+      endTime: course.endTime,
+      location: course.location,
+    }))
+
   return {
     nowIso,
     timezone,
@@ -39,6 +98,11 @@ export function buildAiContext({
       endTime: course.endTime,
       location: course.location,
     })),
+    currentSchedule: {
+      date: currentScheduleDate,
+      tasks: currentScheduleTasks,
+      courses: currentScheduleCourses,
+    },
   }
 }
 
@@ -87,6 +151,7 @@ export function aiTaskToStoreTask(task: AiTask, idPrefix = "ai"): Task {
     location: normalized.location || undefined,
     priority: "P1",
     isExpired: normalized.isExpired ?? false,
+    sourceMessageId: normalized.sourceMessageId,
   }
 }
 

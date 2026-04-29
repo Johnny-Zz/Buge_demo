@@ -9,8 +9,9 @@ import { ChatInterfaceMath } from "@/components/chat-interface-math"
 import { ChatList } from "@/components/chat-list"
 import { AiParsingOverlayNotice } from "@/components/ai-parsing-overlay-notice"
 import { AiParsingOverlayCompact } from "@/components/ai-parsing-overlay-compact"
+import { useTaskStore } from "@/hooks/use-task-store"
 import { toast } from "@/hooks/use-toast"
-import { GROUP_PARSE_INPUTS } from "@/lib/group-parse-inputs"
+import { buildGroupParseInput } from "@/lib/group-parse-inputs"
 import type { Task } from "@/hooks/use-task-store"
 
 interface ChatState {
@@ -24,6 +25,7 @@ type ParseGroupId = "group-1" | "group-2" | "group-4"
 const CHAT_GROUP_IDS = ["group-3", "group-4", "group-2", "group-1"]
 
 export default function Home() {
+  const { processedMessageIds } = useTaskStore()
   const [showOverlay, setShowOverlay] = useState(false)
   const [currentView, setCurrentView] = useState<"list" | "chat">("list")
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
@@ -76,14 +78,18 @@ export default function Home() {
       const response = await callBugeAi(
         createChatRouteRequest(
           "group_parse",
-          GROUP_PARSE_INPUTS[groupId],
+          buildGroupParseInput(groupId, processedMessageIds),
           buildAiContext({}),
         ),
       )
 
-      const parsedTasks = (Array.isArray(response) ? response : [response]).map((task, index) =>
-        aiTaskToStoreTask(task, `${groupId}-${index}`),
-      )
+      const parsedTasks = (Array.isArray(response) ? response : [response])
+        .filter(
+          (task) =>
+            !task.sourceMessageId ||
+            !processedMessageIds.includes(task.sourceMessageId),
+        )
+        .map((task, index) => aiTaskToStoreTask(task, `${groupId}-${index}`))
 
       setParsedTasksByGroup((prev) => ({
         ...prev,

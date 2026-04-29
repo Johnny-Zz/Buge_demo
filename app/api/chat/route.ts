@@ -46,6 +46,55 @@ function buildTemporalContextMessage(nowIso: string, timezone: string) {
   }
 }
 
+function buildCurrentScheduleMessage(context: {
+  currentSchedule?: {
+    date: string
+    tasks?: Array<{ title: string; date: string; time: string; endTime?: string }>
+    courses?: Array<{ name: string; dayOfWeek: number; startTime: string; endTime: string; location: string }>
+  }
+  tasks?: Array<{ title: string; date: string; time: string; endTime?: string }>
+  courses?: Array<{ name: string; dayOfWeek: number; startTime: string; endTime: string; location: string }>
+}) {
+  const currentSchedule = context.currentSchedule
+
+  if (!currentSchedule) {
+    return [
+      "未显式提供 context.currentSchedule。",
+      "如果需要智能排程，请退回参考 context.tasks 与 context.courses，先寻找连续空白时段，再给出时间建议。",
+    ].join("\n")
+  }
+
+  const taskLines =
+    currentSchedule.tasks && currentSchedule.tasks.length > 0
+      ? currentSchedule.tasks
+          .map(
+            (task) =>
+              `- 任务：${task.title} | ${task.date} ${task.time}-${task.endTime || "未知结束时间"}`,
+          )
+          .join("\n")
+      : "- 无当天既有任务"
+
+  const courseLines =
+    currentSchedule.courses && currentSchedule.courses.length > 0
+      ? currentSchedule.courses
+          .map(
+            (course) =>
+              `- 课程：${course.name} | ${course.startTime}-${course.endTime} | ${course.location}`,
+          )
+          .join("\n")
+      : "- 无当天既有课程"
+
+  return [
+    `当前重点排程日期：${currentSchedule.date}`,
+    "你必须先分析这一天的 currentSchedule，找到连续空白时段，再决定是否可以安排到今天。",
+    "currentSchedule.tasks:",
+    taskLines,
+    "currentSchedule.courses:",
+    courseLines,
+    "context.tasks 与 context.courses 是更完整的全局背景，可用于目标日期切换后的二次校验。",
+  ].join("\n")
+}
+
 export async function POST(request: Request) {
   let payload: unknown
 
@@ -74,10 +123,18 @@ export async function POST(request: Request) {
     { role: "system", content: buildSystemPrompt(routeRequest.scene) },
   ]
 
-  if (routeRequest.scene === "group_parse") {
+  messages.push({
+    role: "system",
+    content: temporalContextMessage,
+  })
+
+  if (
+    routeRequest.scene === "quick_task" ||
+    routeRequest.scene === "habit_schedule"
+  ) {
     messages.push({
       role: "system",
-      content: temporalContextMessage,
+      content: buildCurrentScheduleMessage(routeRequest.context),
     })
   }
 

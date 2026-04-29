@@ -355,7 +355,7 @@ interface PendingAiDurationSelection {
 }
 
 export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterfaceBugeProps) {
-  const { tasks, removeTask, addTask, updateTask, findTaskByTitle, inboxTasks, removeFromInbox, updateInboxTask, moveFromInboxToSchedule } = useTaskStore()
+  const { tasks, removeTask, addTask, updateTask, findTaskByTitle, inboxTasks, removeFromInbox, updateInboxTask, moveFromInboxToSchedule, markMessageAsProcessed } = useTaskStore()
   const { courses, getTodayCourses, updateCourse, addCourse, removeCourse, setCourses } = useCourseStore()
   const { habits, addHabit, updateHabit, removeHabit } = useHabitStore()
   const [inputValue, setInputValue] = useState("")
@@ -593,6 +593,10 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
   }
 
   const handleCompleteTask = (taskId: string) => {
+    const taskToComplete = tasks.find((task) => task.id === taskId)
+    if (taskToComplete?.sourceMessageId) {
+      markMessageAsProcessed(taskToComplete.sourceMessageId)
+    }
     removeTask(taskId)
   }
 

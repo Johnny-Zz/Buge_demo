@@ -1,6 +1,9 @@
 "use client"
 
 import { ArrowLeft, Menu, Mic, Smile, Plus } from "lucide-react"
+import { useTaskStore } from "@/hooks/use-task-store"
+import { SECURITY_MESSAGE_IDS } from "@/lib/group-parse-inputs"
+import { cn } from "@/lib/utils"
 import { StatusBar } from "./status-bar"
 import { SummonAgentButton } from "./summon-agent-button"
 
@@ -11,6 +14,14 @@ interface ChatInterfaceProps {
 }
 
 export function ChatInterface({ onSummonAgent, onBack, isParsing = false }: ChatInterfaceProps) {
+  const { processedMessageIds } = useTaskStore()
+  const meetingNoticeProcessed = processedMessageIds.includes(
+    SECURITY_MESSAGE_IDS.meetingNotice,
+  )
+  const scheduleNoticeProcessed = processedMessageIds.includes(
+    SECURITY_MESSAGE_IDS.scheduleNotice,
+  )
+
   return (
     <div className="flex flex-col h-screen bg-[#111111]">
       {/* Unified Status Bar */}
@@ -56,10 +67,20 @@ export function ChatInterface({ onSummonAgent, onBack, isParsing = false }: Chat
             <div className="flex items-center gap-1.5 mb-1">
               <span className="text-xs text-red-500 bg-red-500/20 px-1.5 py-0.5 rounded">群主</span>
               <span className="text-sm text-gray-400">X老师</span>
+              {meetingNoticeProcessed && (
+                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-300">
+                  ✅ 已添加入库
+                </span>
+              )}
             </div>
 
             {/* Meeting Card */}
-            <div className="bg-[#262b38] rounded-lg p-4">
+            <div
+              className={cn(
+                "rounded-lg p-4",
+                meetingNoticeProcessed ? "bg-[#262b38]/70 opacity-80" : "bg-[#262b38]",
+              )}
+            >
               <p className="text-gray-400 text-sm mb-1">云议</p>
               <p className="text-white text-[15px] leading-relaxed">
                 <span className="text-white">会议主题：</span>奖励计划经验宣讲会
@@ -113,10 +134,20 @@ export function ChatInterface({ onSummonAgent, onBack, isParsing = false }: Chat
             <div className="flex items-center gap-1.5 mb-1">
               <span className="text-xs text-red-500 bg-red-500/20 px-1.5 py-0.5 rounded">群主</span>
               <span className="text-sm text-gray-400">X老师</span>
+              {scheduleNoticeProcessed && (
+                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-300">
+                  ✅ 已添加入库
+                </span>
+              )}
             </div>
 
             {/* Schedule Document Image */}
-            <div className="bg-white rounded-lg overflow-hidden shadow-sm">
+            <div
+              className={cn(
+                "rounded-lg overflow-hidden shadow-sm",
+                scheduleNoticeProcessed ? "bg-white/90 opacity-75" : "bg-white",
+              )}
+            >
               <div className="p-4">
                 <h3 className="text-center text-black font-medium text-sm mb-4">
                   开源安全奖励计划经验宣讲会日程

@@ -170,6 +170,7 @@ export interface Task {
   time: string
   endTime?: string
   location?: string
+  sourceMessageId?: string
   isExpired?: boolean
   priority: "P0" | "P1" | "P2"
   hasWarning?: boolean
@@ -182,6 +183,7 @@ export interface Task {
 interface TaskStore {
   tasks: Task[]
   inboxTasks: Task[]
+  processedMessageIds: string[]
   addTask: (task: Task) => void
   addTasks: (tasks: Task[]) => void
   updateTask: (taskId: string, updates: Partial<Task>) => void
@@ -189,6 +191,7 @@ interface TaskStore {
   clearTasks: () => void
   hasTask: (taskId: string) => boolean
   findTaskByTitle: (title: string) => Task | undefined
+  markMessageAsProcessed: (messageId: string) => void
   // Inbox methods
   addToInbox: (task: Task) => void
   removeFromInbox: (taskId: string) => void
@@ -200,6 +203,7 @@ interface TaskStore {
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   inboxTasks: [],
+  processedMessageIds: [],
   addTask: (task) =>
     set((state) => {
       // Prevent duplicates
@@ -229,6 +233,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   clearTasks: () => set({ tasks: [] }),
   hasTask: (taskId) => get().tasks.some((t) => t.id === taskId),
   findTaskByTitle: (title) => get().tasks.find((t) => t.title === title),
+  markMessageAsProcessed: (messageId) =>
+    set((state) => {
+      const normalizedMessageId = messageId.trim()
+
+      if (!normalizedMessageId || state.processedMessageIds.includes(normalizedMessageId)) {
+        return state
+      }
+
+      return {
+        processedMessageIds: [...state.processedMessageIds, normalizedMessageId],
+      }
+    }),
   // Inbox methods
   addToInbox: (task) =>
     set((state) => {
@@ -257,6 +273,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       return {
         inboxTasks: state.inboxTasks.filter((t) => t.id !== taskId),
         tasks: [...state.tasks, updatedTask],
+        processedMessageIds:
+          updatedTask.sourceMessageId &&
+          !state.processedMessageIds.includes(updatedTask.sourceMessageId)
+            ? [...state.processedMessageIds, updatedTask.sourceMessageId]
+            : state.processedMessageIds,
       }
     }),
   clearInbox: () => set({ inboxTasks: [] }),

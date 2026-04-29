@@ -4,13 +4,15 @@ import { z } from "zod"
 
 const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+const optionalEndTimeSchema = z.union([hhmmSchema, z.literal(""), z.null()]).optional()
+const optionalLocationSchema = z.union([z.string(), z.null()]).optional()
 
 export const AiTaskSchema = z.object({
   taskName: z.string().trim().min(1),
   date: isoDateSchema,
   startTime: hhmmSchema,
-  endTime: hhmmSchema.optional(),
-  location: z.string().optional().default(""),
+  endTime: optionalEndTimeSchema,
+  location: optionalLocationSchema,
 })
 
 export const SingleTaskEnvelopeSchema = z.object({
@@ -64,11 +66,17 @@ export function getEnvelopeSchema(scene: AiScene) {
 }
 
 export function normalizeTaskShape(task: z.infer<typeof AiTaskSchema>): AiTask {
+  const normalizedEndTime =
+    typeof task.endTime === "string" ? task.endTime.trim() : ""
+  const normalizedLocation =
+    typeof task.location === "string" ? task.location.trim() : ""
+
   return {
     taskName: task.taskName.trim(),
     date: task.date.trim(),
     startTime: task.startTime.trim(),
-    endTime: task.endTime?.trim() || addMinutesToTime(task.startTime.trim(), 60),
-    location: task.location?.trim() || "",
+    endTime: normalizedEndTime || addMinutesToTime(task.startTime.trim(), 60),
+    location: normalizedLocation,
+    endTimeInferred: !normalizedEndTime,
   }
 }

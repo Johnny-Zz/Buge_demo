@@ -20,6 +20,32 @@ function errorResponse(status: number, code: string, message: string) {
   )
 }
 
+function buildTemporalContextMessage(nowIso: string, timezone: string) {
+  try {
+    const now = new Date(nowIso)
+
+    if (Number.isNaN(now.getTime())) {
+      return `当前参考时间：${nowIso}，时区：${timezone}。请严格基于这个参考时间解析“今天 / 明天 / 后天 / 本周三 / 下周五”等相对时间。`
+    }
+
+    const formatter = new Intl.DateTimeFormat("zh-CN", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      weekday: "long",
+    })
+
+    return [
+      `当前参考时间：${formatter.format(now)}，时区：${timezone}。`,
+      "请严格基于这个参考时间解析“今天 / 明天 / 后天 / 本周三 / 下周五”等相对时间。",
+      "如果原文同时出现相对时间和绝对日期，请优先采用更具体且能自洽的日期信息。",
+    ].join("\n")
+  } catch {
+    return `当前参考时间：${nowIso}，时区：${timezone}。请严格基于这个参考时间解析“今天 / 明天 / 后天 / 本周三 / 下周五”等相对时间。`
+  }
+}
+
 export async function POST(request: Request) {
   let payload: unknown
 
@@ -40,14 +66,35 @@ export async function POST(request: Request) {
   }
 
   const routeRequest = parsed.data
+  const temporalContextMessage = buildTemporalContextMessage(
+    routeRequest.context.nowIso,
+    routeRequest.context.timezone,
+  )
+  const messages: Array<{ role: "system" | "user"; content: string }> = [
+    { role: "system", content: buildSystemPrompt(routeRequest.scene) },
+  ]
+
+  if (routeRequest.scene === "group_parse") {
+    messages.push({
+      role: "system",
+      content: temporalContextMessage,
+    })
+  }
+
+  messages.push({
+    role: "user",
+    content: buildUserPrompt(routeRequest),
+  })
+
+  let rawResult = ""
 
   try {
     const data = await createStructuredCompletion<AiTask | AiTask[]>({
-      messages: [
-        { role: "system", content: buildSystemPrompt(routeRequest.scene) },
-        { role: "user", content: buildUserPrompt(routeRequest) },
-      ],
+      messages,
       maxTokens: getMaxTokens(routeRequest.scene),
+      onRaw: (content) => {
+        rawResult = content
+      },
       parse: (value) => {
         const schema = getEnvelopeSchema(routeRequest.scene)
         const parsedEnvelope = schema.parse(value)
@@ -60,12 +107,15 @@ export async function POST(request: Request) {
       },
     })
 
+    console.log("DeepSeek Raw Output:", rawResult)
+
     return NextResponse.json<ChatRouteResponse>({
       ok: true,
       scene: routeRequest.scene,
       data,
     })
   } catch (error) {
+    console.log("DeepSeek Raw Output:", rawResult)
     console.error("DeepSeek chat route failed:", error)
     return errorResponse(502, "AI_UPSTREAM_ERROR", "AI 解析暂时失败，请稍后重试")
   }

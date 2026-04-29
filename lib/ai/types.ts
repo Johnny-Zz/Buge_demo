@@ -6,6 +6,7 @@ export interface AiTask {
   startTime: string
   endTime: string
   location?: string
+  endTimeInferred?: boolean
 }
 
 export interface HabitContext {

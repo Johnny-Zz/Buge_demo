@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from "react"
 import { ArrowLeft, Menu, Mic, Smile, Plus, Check, MapPin, Sparkles, Lightbulb, X, Send, Trash2, Edit3, ChevronDown, Pencil, StickyNote, Calendar, School, Loader2, Download, Settings, Inbox, ArrowRight, Clock, MessageSquare, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react"
 import { aiTaskToStoreTask, buildAiContext, callBugeAi, createChatRouteRequest } from "@/lib/ai/client"
+import { addMinutesToTime } from "@/lib/ai/date"
+import type { AiTask } from "@/lib/ai/types"
 import { useTaskStore, Task, checkTaskConflict, checkTaskBufferWarning } from "@/hooks/use-task-store"
 import { useCourseStore, Course, checkCourseConflict, checkCourseBufferWarning } from "@/hooks/use-course-store"
 import { useHabitStore } from "@/hooks/use-habit-store"
@@ -80,6 +82,27 @@ function detectConflicts(tasks: Task[]): Set<string> {
 function parseTimeToMinutes(time: string): number {
   const [h, m] = time.split(":").map(Number)
   return h * 60 + m
+}
+
+function isValidTimeValue(time: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(time.trim())
+}
+
+function resolveEndTime(startTime: string, endTime?: string): string {
+  const normalizedStart = startTime.trim()
+  const normalizedEnd = endTime?.trim()
+
+  if (normalizedEnd) {
+    return normalizedEnd
+  }
+
+  return isValidTimeValue(normalizedStart)
+    ? addMinutesToTime(normalizedStart, 60)
+    : normalizedStart
+}
+
+function formatTimeRange(startTime: string, endTime?: string): string {
+  return `${startTime} - ${resolveEndTime(startTime, endTime)}`
 }
 
 // Check if a time slot falls within a course block
@@ -340,6 +363,11 @@ interface PendingConfirmation {
   }
 }
 
+interface PendingAiDurationSelection {
+  task: AiTask
+  insight: string
+}
+
 export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   const { tasks, removeTask, addTask, updateTask, findTaskByTitle, inboxTasks, removeFromInbox, updateInboxTask, moveFromInboxToSchedule } = useTaskStore()
   const { courses, getTodayCourses, updateCourse, addCourse, removeCourse, setCourses } = useCourseStore()
@@ -351,7 +379,10 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   const [showInboxModal, setShowInboxModal] = useState(false)
   const [showHabitsModal, setShowHabitsModal] = useState(false)
   const [showManualAddModal, setShowManualAddModal] = useState(false)
-  const [manualAddConflictError, setManualAddConflictError] = useState<string | null>(null)
+  const [showAiDurationPicker, setShowAiDurationPicker] = useState(false)
+  const [pendingAiDurationSelection, setPendingAiDurationSelection] = useState<PendingAiDurationSelection | null>(null)
+  const [customAiDuration, setCustomAiDuration] = useState("")
+  const [showCustomDurationInput, setShowCustomDurationInput] = useState(false)
   
   // Buffer time warning state (10-minute gap warning)
   const [showBufferWarning, setShowBufferWarning] = useState(false)
@@ -402,9 +433,10 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
   }
 
   const validateTaskPlacement = (
-    taskData: { date: string; startTime: string; endTime: string; location: string },
+    taskData: { date: string; startTime: string; endTime?: string; location: string },
     excludeTaskId?: string,
   ) => {
+    const effectiveEndTime = resolveEndTime(taskData.startTime, taskData.endTime)
     const [month, day] = taskData.date.split('-').map(Number)
     const year = new Date().getFullYear()
     const taskDate = new Date(year, month - 1, day)
@@ -413,12 +445,12 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
 
     const otherTasks = excludeTaskId ? tasks.filter((task) => task.id !== excludeTaskId) : tasks
     const taskConflict = checkTaskConflict(
-      { date: taskData.date, time: taskData.startTime, endTime: taskData.endTime },
+      { date: taskData.date, time: taskData.startTime, endTime: effectiveEndTime },
       otherTasks,
     )
     const coursesOnDay = courses.filter((course) => course.dayOfWeek === dayOfWeek)
     const courseConflict = checkCourseConflict(
-      { startTime: taskData.startTime, endTime: taskData.endTime, dayOfWeek },
+      { startTime: taskData.startTime, endTime: effectiveEndTime, dayOfWeek },
       coursesOnDay,
     )
 
@@ -435,11 +467,11 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
     }
 
     const taskBufferWarning = checkTaskBufferWarning(
-      { date: taskData.date, time: taskData.startTime, endTime: taskData.endTime },
+      { date: taskData.date, time: taskData.startTime, endTime: effectiveEndTime },
       otherTasks,
     )
     const courseBufferWarning = checkCourseBufferWarning(
-      { startTime: taskData.startTime, endTime: taskData.endTime || taskData.startTime, dayOfWeek },
+      { startTime: taskData.startTime, endTime: effectiveEndTime, dayOfWeek },
       coursesOnDay,
     )
 
@@ -458,7 +490,7 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
       {
         date: task.date,
         startTime: task.time,
-        endTime: task.endTime || task.time,
+        endTime: resolveEndTime(task.time, task.endTime),
         location: task.location || "",
       },
       existingTaskId,
@@ -481,7 +513,7 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
           name: task.title,
           date: task.date,
           startTime: task.time,
-          endTime: task.endTime || task.time,
+          endTime: resolveEndTime(task.time, task.endTime),
           location: task.location || "",
           insight,
         },
@@ -504,8 +536,62 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
 
     addTask({
       ...task,
+      endTime: resolveEndTime(task.time, task.endTime),
       insight,
     })
+  }
+
+  const closeAiDurationPicker = () => {
+    setShowAiDurationPicker(false)
+    setPendingAiDurationSelection(null)
+    setShowCustomDurationInput(false)
+    setCustomAiDuration("")
+  }
+
+  const finalizeAiTask = (aiTask: AiTask, insight: string) => {
+    const storeTask = aiTaskToStoreTask(aiTask, "chat")
+    const existingTask = findTaskByTitle(storeTask.title)
+
+    if (existingTask) {
+      setPendingConfirmation({
+        existingTaskId: existingTask.id,
+        existingTaskTitle: existingTask.title,
+        newData: {
+          date: storeTask.date,
+          time: storeTask.time,
+          endTime: resolveEndTime(storeTask.time, storeTask.endTime),
+          location: storeTask.location || "",
+          insight,
+        },
+      })
+      return
+    }
+
+    applyParsedTask(storeTask, insight)
+  }
+
+  const promptForAiDuration = (task: AiTask, insight: string) => {
+    setCustomAiDuration("")
+    setShowCustomDurationInput(false)
+    setPendingAiDurationSelection({
+      task,
+      insight,
+    })
+    setShowAiDurationPicker(true)
+  }
+
+  const handleAiDurationSelection = (minutes: number) => {
+    if (!pendingAiDurationSelection) return
+
+    const adjustedTask: AiTask = {
+      ...pendingAiDurationSelection.task,
+      endTime: addMinutesToTime(pendingAiDurationSelection.task.startTime, minutes),
+      endTimeInferred: false,
+    }
+
+    const insight = pendingAiDurationSelection.insight
+    closeAiDurationPicker()
+    finalizeAiTask(adjustedTask, insight)
   }
 
   const handleCompleteTask = (taskId: string) => {
@@ -557,29 +643,17 @@ export function ChatInterfaceBuge({ onBack }: ChatInterfaceBugeProps) {
         throw new Error("AI 未返回可用的任务结果")
       }
 
-      const storeTask = aiTaskToStoreTask(aiTask, "chat")
       const insight =
         scene === "habit_schedule"
           ? "智能排程：已结合习惯、课表与空闲时间生成建议"
           : "精准识别：已根据自然语言提取日程要素"
-      const existingTask = findTaskByTitle(storeTask.title)
 
-      if (existingTask) {
-        setPendingConfirmation({
-          existingTaskId: existingTask.id,
-          existingTaskTitle: existingTask.title,
-          newData: {
-            date: storeTask.date,
-            time: storeTask.time,
-            endTime: storeTask.endTime || storeTask.time,
-            location: storeTask.location || "",
-            insight,
-          },
-        })
+      if (aiTask.endTimeInferred) {
+        promptForAiDuration(aiTask, insight)
         return
       }
 
-      applyParsedTask(storeTask, insight)
+      finalizeAiTask(aiTask, insight)
     } catch (error) {
       const message = error instanceof Error ? error.message : "请稍后重试"
       toast({
@@ -1657,48 +1731,39 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
           isOpen={showManualAddModal}
           onClose={() => {
             setShowManualAddModal(false)
-            setManualAddConflictError(null)
           }}
-          conflictError={manualAddConflictError}
           selectedDate={selectedAgentDate}
+          validateTaskPlacement={validateTaskPlacement}
           onSave={(taskData) => {
-            // Calculate the day of week from the task date
+            const normalizedEndTime = resolveEndTime(taskData.startTime, taskData.endTime)
+            const validation = validateTaskPlacement({
+              ...taskData,
+              endTime: normalizedEndTime,
+            })
+
+            if (validation.hardConflictMessage) {
+              toast({
+                title: "该时间段已存在其他日程",
+                description: validation.hardConflictMessage,
+                variant: "destructive",
+              })
+              return
+            }
+
             const [month, day] = taskData.date.split('-').map(Number)
             const year = new Date().getFullYear()
             const taskDate = new Date(year, month - 1, day)
             const jsDay = taskDate.getDay()
-            const dayOfWeek = jsDay === 0 ? 7 : jsDay // Convert Sunday 0 to 7
-            
-            // Check for conflicts with existing tasks on the same date
-            const taskConflict = checkTaskConflict(
-              { date: taskData.date, time: taskData.startTime, endTime: taskData.endTime },
-              tasks
-            )
-            
-            // Check for conflicts with courses on the same day of week
+            const dayOfWeek = jsDay === 0 ? 7 : jsDay
             const coursesOnDay = courses.filter(c => c.dayOfWeek === dayOfWeek)
-            const courseConflict = checkCourseConflict(
-              { startTime: taskData.startTime, endTime: taskData.endTime, dayOfWeek },
-              coursesOnDay
-            )
-            
-            if (taskConflict) {
-              setManualAddConflictError(`时间冲突：与【${taskConflict.title}】(${taskConflict.time}) 重叠`)
-              return
-            }
-            
-            if (courseConflict) {
-              setManualAddConflictError(`时间冲突：与课程【${courseConflict.name}】(${courseConflict.startTime}-${courseConflict.endTime}) 重叠`)
-              return
-            }
-            
+
             // No hard conflict - check for buffer time warning (10-minute gap)
             const taskBufferWarning = checkTaskBufferWarning(
-              { date: taskData.date, time: taskData.startTime, endTime: taskData.endTime },
+              { date: taskData.date, time: taskData.startTime, endTime: normalizedEndTime },
               tasks
             )
             const courseBufferWarning = checkCourseBufferWarning(
-              { startTime: taskData.startTime, endTime: taskData.endTime || taskData.startTime, dayOfWeek },
+              { startTime: taskData.startTime, endTime: normalizedEndTime, dayOfWeek },
               coursesOnDay
             )
             
@@ -1706,11 +1771,13 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
               // Show buffer warning confirmation
               setPendingBufferTask({
                 type: 'manual',
-                taskData: taskData
+                taskData: {
+                  ...taskData,
+                  endTime: normalizedEndTime,
+                }
               })
               setShowBufferWarning(true)
               setShowManualAddModal(false)
-              setManualAddConflictError(null)
               return
             }
             
@@ -1720,13 +1787,12 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
               title: taskData.name,
               date: taskData.date,
               time: taskData.startTime,
-              endTime: taskData.endTime || undefined,
+              endTime: normalizedEndTime,
               location: taskData.location || undefined,
               priority: "P1",
             })
             
             setShowManualAddModal(false)
-            setManualAddConflictError(null)
           }}
         />
       )}
@@ -1773,6 +1839,88 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
         </>
       )}
 
+      {showAiDurationPicker && pendingAiDurationSelection && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            onClick={closeAiDurationPicker}
+          />
+          <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-sm mx-auto bg-[#1e1e1e] z-50 rounded-2xl shadow-2xl border border-sky-500/30">
+            <div className="p-4 border-b border-white/10">
+              <h2 className="text-base font-semibold text-white text-center flex items-center justify-center gap-2">
+                <Clock className="w-5 h-5 text-sky-400" />
+                补充任务时长
+              </h2>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-3">
+                <p className="text-sm font-medium text-white">
+                  {pendingAiDurationSelection.task.taskName}
+                </p>
+                <p className="mt-1 text-xs text-sky-300">
+                  开始时间：{pendingAiDurationSelection.task.startTime}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={() => handleAiDurationSelection(15)}
+                  className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm font-medium text-sky-300 transition-colors hover:bg-sky-500/20"
+                >
+                  15分钟
+                </button>
+                <button
+                  onClick={() => handleAiDurationSelection(30)}
+                  className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm font-medium text-sky-300 transition-colors hover:bg-sky-500/20"
+                >
+                  30分钟
+                </button>
+                <button
+                  onClick={() => handleAiDurationSelection(60)}
+                  className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm font-medium text-sky-300 transition-colors hover:bg-sky-500/20"
+                >
+                  1小时
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <button
+                  onClick={() => setShowCustomDurationInput((prev) => !prev)}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-white/10"
+                >
+                  自定义
+                </button>
+
+                {showCustomDurationInput && (
+                  <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-3">
+                    <input
+                      type="number"
+                      min="1"
+                      value={customAiDuration}
+                      onChange={(e) => setCustomAiDuration(e.target.value)}
+                      placeholder="输入分钟数"
+                      className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-white outline-none focus:border-sky-500/50"
+                    />
+                    <button
+                      onClick={() => {
+                        const minutes = Number(customAiDuration)
+                        if (!Number.isFinite(minutes) || minutes <= 0) {
+                          return
+                        }
+                        handleAiDurationSelection(minutes)
+                      }}
+                      className="w-full rounded-lg border border-sky-500/40 bg-sky-500/20 px-3 py-2 text-sm font-medium text-sky-300 transition-colors hover:bg-sky-500/30"
+                    >
+                      确认自定义时长
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Buffer Time Warning Dialog (10-minute gap) */}
       {showBufferWarning && pendingBufferTask && (
         <>
@@ -1804,7 +1952,10 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
                         title: pendingBufferTask.taskData.name,
                         date: pendingBufferTask.taskData.date,
                         time: pendingBufferTask.taskData.startTime,
-                        endTime: pendingBufferTask.taskData.endTime || undefined,
+                        endTime: resolveEndTime(
+                          pendingBufferTask.taskData.startTime,
+                          pendingBufferTask.taskData.endTime,
+                        ),
                         location: pendingBufferTask.taskData.location || undefined,
                         priority: "P1",
                       })
@@ -1814,7 +1965,10 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
                           title: pendingBufferTask.taskData.name,
                           date: pendingBufferTask.taskData.date,
                           time: pendingBufferTask.taskData.startTime,
-                          endTime: pendingBufferTask.taskData.endTime || undefined,
+                          endTime: resolveEndTime(
+                            pendingBufferTask.taskData.startTime,
+                            pendingBufferTask.taskData.endTime,
+                          ),
                           location: pendingBufferTask.taskData.location || undefined,
                           insight: pendingBufferTask.taskData.insight,
                         })
@@ -1824,7 +1978,10 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
                           title: pendingBufferTask.taskData.name,
                           date: pendingBufferTask.taskData.date,
                           time: pendingBufferTask.taskData.startTime,
-                          endTime: pendingBufferTask.taskData.endTime || undefined,
+                          endTime: resolveEndTime(
+                            pendingBufferTask.taskData.startTime,
+                            pendingBufferTask.taskData.endTime,
+                          ),
                           location: pendingBufferTask.taskData.location || undefined,
                           priority: "P1",
                           insight: pendingBufferTask.taskData.insight,
@@ -1835,7 +1992,10 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
                         title: pendingBufferTask.taskData.name,
                         date: pendingBufferTask.taskData.date,
                         time: pendingBufferTask.taskData.startTime,
-                        endTime: pendingBufferTask.taskData.endTime || undefined,
+                        endTime: resolveEndTime(
+                          pendingBufferTask.taskData.startTime,
+                          pendingBufferTask.taskData.endTime,
+                        ),
                         location: pendingBufferTask.taskData.location || undefined,
                       })
                     }
@@ -2222,14 +2382,17 @@ function CalendarView({
 function ManualAddScheduleModal({
   isOpen,
   onClose,
-  conflictError,
   selectedDate,
+  validateTaskPlacement,
   onSave
 }: {
   isOpen: boolean
   onClose: () => void
-  conflictError: string | null
   selectedDate: string
+  validateTaskPlacement: (taskData: { date: string; startTime: string; endTime?: string; location: string }) => {
+    hardConflictMessage?: string | null
+    needsBufferConfirmation?: boolean
+  }
   onSave: (data: { name: string; date: string; startTime: string; endTime: string; location: string }) => void
 }) {
   const [name, setName] = useState("")
@@ -2237,6 +2400,7 @@ function ManualAddScheduleModal({
   const [startTime, setStartTime] = useState("")
   const [endTime, setEndTime] = useState("")
   const [location, setLocation] = useState("")
+  const [liveError, setLiveError] = useState<string | null>(null)
 
   // Reset form when modal opens with new selected date
   useEffect(() => {
@@ -2246,16 +2410,54 @@ function ManualAddScheduleModal({
       setStartTime("")
       setEndTime("")
       setLocation("")
+      setLiveError(null)
     }
   }, [isOpen, selectedDate])
 
+  useEffect(() => {
+    if (!isOpen) return
+
+    const normalizedDate = date.trim() || selectedDate
+    const normalizedStartTime = startTime.trim()
+    const normalizedEndTime = endTime.trim()
+
+    if (!normalizedStartTime || !isValidTimeValue(normalizedStartTime)) {
+      setLiveError(null)
+      return
+    }
+
+    if (normalizedEndTime) {
+      if (!isValidTimeValue(normalizedEndTime)) {
+        setLiveError(null)
+        return
+      }
+
+      if (timeToMinutes(normalizedEndTime) < timeToMinutes(normalizedStartTime)) {
+        setLiveError("结束时间不能早于起始时间")
+        return
+      }
+    }
+
+    const validation = validateTaskPlacement({
+      date: normalizedDate,
+      startTime: normalizedStartTime,
+      endTime: resolveEndTime(normalizedStartTime, normalizedEndTime),
+      location: location.trim(),
+    })
+
+    setLiveError(validation.hardConflictMessage ?? null)
+  }, [date, endTime, isOpen, location, selectedDate, startTime, validateTaskPlacement])
+
   const handleSave = () => {
-    if (!name.trim() || !startTime.trim()) return
+    const normalizedStartTime = startTime.trim()
+
+    if (!name.trim() || !normalizedStartTime || liveError) return
+
     onSave({
       name: name.trim(),
-      date: date.trim() || "04-22",
-      startTime: startTime.trim(),
-      endTime: endTime.trim() || startTime.trim(),
+      date: date.trim() || selectedDate,
+      startTime: normalizedStartTime,
+      endTime: resolveEndTime(normalizedStartTime, endTime),
       location: location.trim()
     })
   }
@@ -2284,12 +2486,11 @@ function ManualAddScheduleModal({
         </div>
 
         <div className="p-4 space-y-4">
-          {/* Conflict Error */}
-          {conflictError && (
+          {liveError && (
             <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl">
               <p className="text-red-400 text-sm font-medium flex items-center gap-2">
                 <span>⚠️</span>
-                {conflictError}
+                {liveError}
               </p>
             </div>
           )}
@@ -2329,7 +2530,7 @@ function ManualAddScheduleModal({
                 placeholder="14:00"
                 className={cn(
                   "w-full bg-neutral-800 border text-white rounded-lg px-3 py-2.5 text-sm outline-none",
-                  conflictError ? "border-red-500/50 focus:border-red-500" : "border-neutral-700 focus:border-sky-500/50"
+                  liveError ? "border-red-500/50 focus:border-red-500" : "border-neutral-700 focus:border-sky-500/50"
                 )}
               />
             </div>
@@ -2342,7 +2543,7 @@ function ManualAddScheduleModal({
                 placeholder="15:00"
                 className={cn(
                   "w-full bg-neutral-800 border text-white rounded-lg px-3 py-2.5 text-sm outline-none",
-                  conflictError ? "border-red-500/50 focus:border-red-500" : "border-neutral-700 focus:border-sky-500/50"
+                  liveError ? "border-red-500/50 focus:border-red-500" : "border-neutral-700 focus:border-sky-500/50"
                 )}
               />
             </div>
@@ -2370,7 +2571,7 @@ function ManualAddScheduleModal({
           </button>
           <button
             onClick={handleSave}
-            disabled={!name.trim() || !startTime.trim()}
+            disabled={!name.trim() || !startTime.trim() || Boolean(liveError)}
             className="flex-1 py-2.5 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 rounded-xl text-sky-400 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             保存
@@ -2718,7 +2919,6 @@ function CourseCard({
     <div 
       className="backdrop-blur-xl rounded-2xl bg-gradient-to-br from-indigo-500/10 to-blue-500/10 border border-indigo-500/20 shadow-lg overflow-hidden"
     >
-      {/* Collapsed Header - Always visible */}
       <button
         onClick={() => !isEditing && setIsExpanded(!isExpanded)}
         className="w-full p-4 flex items-center gap-3 text-left"
@@ -2728,11 +2928,9 @@ function CourseCard({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-white text-sm font-medium truncate">{course.name}</p>
-          <div className="flex items-center gap-2 text-xs text-gray-400">
-            <span className="font-mono text-indigo-400/70">{course.startTime} - {course.endTime}</span>
-            <span className="text-gray-600">|</span>
-            <span className="truncate">{course.location}</span>
-          </div>
+          <p className="mt-1 font-mono text-xs text-indigo-300/80">
+            {course.startTime} - {course.endTime}
+          </p>
         </div>
         <ChevronDown className={cn(
           "w-4 h-4 text-gray-400 transition-transform",
@@ -2740,9 +2938,12 @@ function CourseCard({
         )} />
       </button>
 
-      {/* Expanded Content */}
-      {isExpanded && (
-        <div className="px-4 pb-4 pt-0 space-y-3 border-t border-indigo-500/10">
+      <div className={cn(
+        "grid transition-all duration-200 ease-out",
+        isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+      )}>
+        <div className="overflow-hidden">
+          <div className="px-4 pb-4 pt-0 space-y-3 border-t border-indigo-500/10">
           {isEditing ? (
             /* Edit Form */
             <div className="space-y-3 pt-3">
@@ -2803,10 +3004,13 @@ function CourseCard({
             </div>
           ) : (
             /* View Mode */
-            <div className="pt-3">
-              <div className="flex items-center gap-2 mb-3">
-                <MapPin className="w-3.5 h-3.5 text-gray-500" />
-                <p className="text-gray-300 text-sm">{course.location}</p>
+            <div className="pt-3 space-y-3">
+              <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-3">
+                <p className="text-xs text-indigo-300/80">上课教室</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <MapPin className="w-3.5 h-3.5 text-indigo-300/80" />
+                  <p className="text-sm text-gray-200">{course.location}</p>
+                </div>
               </div>
               <button
                 onClick={() => setIsEditing(true)}
@@ -2818,7 +3022,8 @@ function CourseCard({
             </div>
           )}
         </div>
-      )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -2885,6 +3090,13 @@ function TaskCard({
 
   // Save details handler with conflict detection
   const handleSaveDetails = () => {
+    const effectiveEndTime = resolveEndTime(editStartTime, editEndTime)
+
+    if (editEndTime.trim() && timeToMinutes(editEndTime) < timeToMinutes(editStartTime)) {
+      setEditConflictError("结束时间不能早于起始时间")
+      return
+    }
+
     // Calculate day of week from the edit date
     const [month, day] = editDate.split('-').map(Number)
     const year = new Date().getFullYear()
@@ -2895,14 +3107,14 @@ function TaskCard({
     // Check for conflicts with other tasks (EXCLUDING this task)
     const otherTasks = allTasks.filter(t => t.id !== task.id)
     const taskConflict = checkTaskConflict(
-      { date: editDate, time: editStartTime, endTime: editEndTime },
+      { date: editDate, time: editStartTime, endTime: effectiveEndTime },
       otherTasks
     )
 
     // Check for conflicts with courses on the same day of week
     const coursesOnDay = allCourses.filter(c => c.dayOfWeek === dayOfWeek)
     const courseConflict = checkCourseConflict(
-      { startTime: editStartTime, endTime: editEndTime, dayOfWeek },
+      { startTime: editStartTime, endTime: effectiveEndTime, dayOfWeek },
       coursesOnDay
     )
 
@@ -2918,11 +3130,11 @@ function TaskCard({
 
     // No hard conflict - check for buffer time warning (10-minute gap)
     const taskBufferWarning = checkTaskBufferWarning(
-      { date: editDate, time: editStartTime, endTime: editEndTime },
+      { date: editDate, time: editStartTime, endTime: effectiveEndTime },
       otherTasks
     )
     const courseBufferWarning = checkCourseBufferWarning(
-      { startTime: editStartTime, endTime: editEndTime || editStartTime, dayOfWeek },
+      { startTime: editStartTime, endTime: effectiveEndTime, dayOfWeek },
       coursesOnDay
     )
 
@@ -2932,7 +3144,7 @@ function TaskCard({
         name: editTitle.trim() || task.title,
         date: editDate,
         startTime: editStartTime,
-        endTime: editEndTime,
+        endTime: effectiveEndTime,
         location: editLocation.trim()
       })
       setEditConflictError(null)
@@ -2945,7 +3157,7 @@ function TaskCard({
       title: editTitle.trim() || task.title,
       date: editDate,
       time: editStartTime,
-      endTime: editEndTime || undefined,
+      endTime: effectiveEndTime,
       location: editLocation.trim() || undefined
     })
     setEditConflictError(null)
@@ -2969,51 +3181,43 @@ function TaskCard({
         "backdrop-blur-xl rounded-2xl overflow-hidden",
         showWarning 
           ? "border border-red-500/70 shadow-[0_0_15px_rgba(239,68,68,0.2)] bg-red-900/20" 
-          : hasInsight
-          ? "bg-gradient-to-br from-emerald-500/10 to-sky-500/10 border border-emerald-500/30 shadow-xl"
-          : "bg-gradient-to-br from-white/10 to-white/5 border border-white/20 shadow-xl"
+          : "bg-gradient-to-br from-sky-500/10 to-white/5 border border-sky-500/20 shadow-xl"
       )}
     >
-      {/* Compact View - Always Visible / Clickable Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full p-4 flex items-center justify-between text-left"
       >
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          {/* Status Dot */}
           <div className={cn(
             "w-2.5 h-2.5 rounded-full flex-shrink-0 transition-colors duration-300",
-            showWarning ? "bg-red-500 animate-pulse" : hasInsight ? "bg-emerald-400" : "bg-sky-400"
+            showWarning ? "bg-red-500 animate-pulse" : "bg-sky-400"
           )} />
-          
-          {/* Date & Time */}
-          <span className={cn(
-            "font-mono text-sm font-bold flex-shrink-0 transition-colors duration-300",
-            showWarning ? "text-red-400" : hasInsight ? "text-emerald-400" : "text-sky-400"
-          )}>
-            {task.date} {task.time}
-          </span>
-          
-          {/* Task Title */}
-          <span className="text-white text-sm font-medium truncate">{task.title}</span>
-          
-          {/* Warning Badge (always visible in compact view if conflict) */}
-          {showWarning && (
-            <span className="text-[10px] text-red-400 bg-red-500/30 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
-              ⚠️ 时间冲突
-            </span>
-          )}
-          
-          {/* Has Note Indicator */}
-          {hasNotes && (
-            <span className="text-[10px] text-gray-400 flex items-center gap-0.5 flex-shrink-0">
-              <StickyNote className="w-3 h-3" />
-              已备注
-            </span>
-          )}
+
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-white">{task.title}</p>
+            <div className="mt-1 flex items-center gap-2 text-xs">
+              <span className={cn(
+                "font-mono font-semibold transition-colors duration-300",
+                showWarning ? "text-red-400" : "text-sky-300"
+              )}>
+                {formatTimeRange(task.time, task.endTime)}
+              </span>
+              {showWarning && (
+                <span className="rounded bg-red-500/30 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
+                  ⚠️ 时间冲突
+                </span>
+              )}
+              {hasNotes && (
+                <span className="flex items-center gap-0.5 text-[10px] text-gray-400">
+                  <StickyNote className="w-3 h-3" />
+                  已备注
+                </span>
+              )}
+            </div>
+          </div>
         </div>
         
-        {/* Quick Complete Button */}
         <button
           onClick={(e) => {
             e.stopPropagation()
@@ -3025,7 +3229,6 @@ function TaskCard({
           <Check className="w-4 h-4" />
         </button>
         
-        {/* Expand/Collapse Indicator */}
         <ChevronDown 
           className={cn(
             "w-5 h-5 text-gray-400 flex-shrink-0 transition-transform duration-200",

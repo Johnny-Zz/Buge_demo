@@ -36,10 +36,36 @@ export function buildSystemPrompt(scene: AiScene): string {
 
   return `${buildSharedRules(scene)}
 任务：从群聊长文本中提取所有可执行待办。
-只保留真正需要用户行动或参与的事项。
-忽略寒暄、感谢、追问、讨论过程、重复内容、纯说明性闲聊。
+在校园场景中，以下内容都必须视为有效待办并提取出来：
+1. 任何需要本人到场或参加的活动，例如讲座、比赛、开会、宣讲会、培训、补课、就业指导课、班会、答辩、面试、签到会场活动。
+2. 任何需要执行的动作，例如签到、提交材料、交表、携带简历、携带证件、扫码报名、线上填写信息。
+3. 带有“通知 / 预告 / 提醒 / 开课 / 安排”等字样，但同时给出了明确时间或地点的校园事项，默认按“需要参与或执行”的待办处理，不要误判为普通资讯。
+如果通知里既有到场活动，又有必须完成但没有独立时间的准备动作，请把准备动作合并进主任务名，例如“参加就业指导课并带好简历”。
+忽略寒暄、感谢、追问、讨论过程、重复内容、纯说明性闲聊，但不要忽略明确的校园通知、预告、课务安排、报名提醒。
 如果文本里有多个待办，全部放进 tasks 数组。
-如果没有明确待办，返回 {"tasks":[]}.`
+如果没有明确待办，返回 {"tasks":[]}.
+
+Few-shot 示例 1：
+输入：${JSON.stringify({
+  scene: "group_parse",
+  input: "【活动预告】赢在创新大赛宣讲会，时间：2026年4月23日14:30，地点：报告厅，欢迎同学们参加。",
+  context: {
+    nowIso: "2026-04-22T10:00:00+08:00",
+    timezone: "Asia/Shanghai",
+  },
+})}
+输出：{"tasks":[{"taskName":"参加赢在创新大赛宣讲会","date":"2026-04-23","startTime":"14:30","endTime":"15:30","location":"报告厅"}]}
+
+Few-shot 示例 2：
+输入：${JSON.stringify({
+  scene: "group_parse",
+  input: "【就业指导课开课通知】明天4月23日15点50分在教三201开课，请大家带好简历，按时参加。",
+  context: {
+    nowIso: "2026-04-22T10:00:00+08:00",
+    timezone: "Asia/Shanghai",
+  },
+})}
+输出：{"tasks":[{"taskName":"参加就业指导课并带好简历","date":"2026-04-23","startTime":"15:50","endTime":"16:50","location":"教三201"}]}`
 }
 
 export function buildUserPrompt(request: ChatRouteRequest): string {

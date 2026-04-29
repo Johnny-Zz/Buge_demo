@@ -9,6 +9,7 @@ interface StructuredCompletionOptions<T> {
   messages: StructuredMessage[]
   maxTokens: number
   parse: (value: unknown) => T
+  onRaw?: (raw: string) => void
 }
 
 function getDeepSeekClient() {
@@ -28,6 +29,7 @@ export async function createStructuredCompletion<T>({
   messages,
   maxTokens,
   parse,
+  onRaw,
 }: StructuredCompletionOptions<T>): Promise<T> {
   const client = getDeepSeekClient()
   const model = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash"
@@ -49,6 +51,8 @@ export async function createStructuredCompletion<T>({
       if (!content) {
         throw new Error("DeepSeek returned empty content")
       }
+
+      onRaw?.(content)
 
       return parse(JSON.parse(content))
     } catch (error) {

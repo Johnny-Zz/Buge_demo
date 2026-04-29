@@ -7,8 +7,10 @@ import {
 } from "@/lib/ai/schemas"
 import type { AiTask, ChatRouteResponse } from "@/lib/ai/types"
 import { NextResponse } from "next/server"
+import { z } from "zod"
 
 export const runtime = "nodejs"
+export const maxDuration = 60
 
 function errorResponse(status: number, code: string, message: string) {
   return NextResponse.json<ChatRouteResponse>(
@@ -18,6 +20,91 @@ function errorResponse(status: number, code: string, message: string) {
     },
     { status },
   )
+}
+
+function isTimeoutLikeError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const normalizedMessage = error.message.toLowerCase()
+  const normalizedName = error.name.toLowerCase()
+
+  return (
+    normalizedMessage.includes("timeout") ||
+    normalizedMessage.includes("timed out") ||
+    normalizedMessage.includes("aborted") ||
+    normalizedMessage.includes("etimedout") ||
+    normalizedName.includes("timeout") ||
+    normalizedName.includes("abort")
+  )
+}
+
+function isConnectionLikeError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const normalizedMessage = error.message.toLowerCase()
+  const normalizedName = error.name.toLowerCase()
+
+  return (
+    normalizedMessage.includes("network") ||
+    normalizedMessage.includes("fetch failed") ||
+    normalizedMessage.includes("connection") ||
+    normalizedMessage.includes("econnreset") ||
+    normalizedMessage.includes("enotfound") ||
+    normalizedMessage.includes("socket") ||
+    normalizedName.includes("connection")
+  )
+}
+
+function classifyAiError(error: unknown) {
+  if (error instanceof z.ZodError) {
+    return {
+      status: 502,
+      code: "AI_SCHEMA_VALIDATION_ERROR",
+      message: "AI 返回数据格式不符合预期",
+    }
+  }
+
+  if (error instanceof SyntaxError) {
+    return {
+      status: 502,
+      code: "AI_JSON_PARSE_ERROR",
+      message: "AI 返回了非标准 JSON",
+    }
+  }
+
+  if (isTimeoutLikeError(error)) {
+    return {
+      status: 504,
+      code: "AI_TIMEOUT",
+      message: "AI 解析超时，请稍后重试",
+    }
+  }
+
+  if (isConnectionLikeError(error)) {
+    return {
+      status: 502,
+      code: "AI_NETWORK_ERROR",
+      message: "AI 服务连接异常，请稍后重试",
+    }
+  }
+
+  if (error instanceof Error && error.message.includes("empty content")) {
+    return {
+      status: 502,
+      code: "AI_EMPTY_RESPONSE",
+      message: "AI 未返回有效内容",
+    }
+  }
+
+  return {
+    status: 502,
+    code: "AI_UPSTREAM_ERROR",
+    message: "AI 解析暂时失败，请稍后重试",
+  }
 }
 
 function buildTemporalContextMessage(nowIso: string, timezone: string) {
@@ -144,6 +231,7 @@ export async function POST(request: Request) {
   })
 
   let rawResult = ""
+  let cleanedResult = ""
 
   try {
     const data = await createStructuredCompletion<AiTask | AiTask[]>({
@@ -151,6 +239,9 @@ export async function POST(request: Request) {
       maxTokens: getMaxTokens(routeRequest.scene),
       onRaw: (content) => {
         rawResult = content
+      },
+      onCleaned: (content) => {
+        cleanedResult = content
       },
       parse: (value) => {
         const schema = getEnvelopeSchema(routeRequest.scene)
@@ -165,6 +256,7 @@ export async function POST(request: Request) {
     })
 
     console.log("DeepSeek Raw Output:", rawResult)
+    console.log("DeepSeek Cleaned JSON:", cleanedResult)
 
     return NextResponse.json<ChatRouteResponse>({
       ok: true,
@@ -173,7 +265,28 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.log("DeepSeek Raw Output:", rawResult)
-    console.error("DeepSeek chat route failed:", error)
-    return errorResponse(502, "AI_UPSTREAM_ERROR", "AI 解析暂时失败，请稍后重试")
+    console.log("DeepSeek Cleaned JSON:", cleanedResult)
+
+    if (error instanceof z.ZodError) {
+      console.error(
+        "Zod 数据校验失败，AI 返回格式不符合规范:",
+        error.flatten(),
+      )
+    } else if (error instanceof SyntaxError) {
+      console.error("JSON 解析致命错误，AI 返回了非标准 JSON:", error.message)
+    } else if (isTimeoutLikeError(error)) {
+      console.error("AI 请求超时:", error)
+    } else if (isConnectionLikeError(error)) {
+      console.error("AI 网络连接异常:", error)
+    } else {
+      console.error("网络或未知 API 错误:", error)
+    }
+
+    const classifiedError = classifyAiError(error)
+    return errorResponse(
+      classifiedError.status,
+      classifiedError.code,
+      classifiedError.message,
+    )
   }
 }

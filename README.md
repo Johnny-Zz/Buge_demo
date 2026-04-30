@@ -2,8 +2,7 @@
 
 > 本项目为纯前端高保真 Demo，旨在展示“不鸽” AI 智能体的核心交互流与业务架构。
 
-🔗 **在线体验链接**：([https://你的vercel或webify部署链接](https://v0-ai-theta-brown.vercel.app/))
-*(注：Demo 仅为前端功能展示，全局采用虚拟数据支持交互演示)*
+🔗 **在线体验链接**：(https://v0-ai-theta-brown.vercel.app/)
 
 ---
 

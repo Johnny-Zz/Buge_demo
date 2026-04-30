@@ -16,6 +16,7 @@ interface StructuredCompletionOptions<T> {
 function cleanJsonLikeText(raw: string): string {
   let cleanText = raw
     .replace(/^\uFEFF/, "")
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/```json/gi, "")
     .replace(/```/gi, "")
     .trim()

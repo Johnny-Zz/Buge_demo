@@ -6,31 +6,87 @@ const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
 const optionalTimeSchema = z.union([hhmmSchema, z.literal(""), z.null()]).optional()
 const optionalEndTimeSchema = z.union([hhmmSchema, z.literal(""), z.null()]).optional()
-const optionalLocationSchema = z.union([z.string(), z.null()]).optional()
+
+function toOptionalLooseString(value: unknown) {
+  if (value === null || value === undefined) {
+    return undefined
+  }
+
+  if (typeof value === "string") {
+    return value.trim()
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value)
+  }
+
+  return undefined
+}
+
+function normalizeIncomingAiTask(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value
+  }
+
+  const normalizedTask = { ...(value as Record<string, unknown>) }
+
+  if (
+    (typeof normalizedTask.taskName !== "string" || !normalizedTask.taskName.trim()) &&
+    typeof normalizedTask.title === "string"
+  ) {
+    normalizedTask.taskName = normalizedTask.title
+  }
+
+  return normalizedTask
+}
+
+const optionalLooseStringSchema = z.preprocess(
+  toOptionalLooseString,
+  z.string().optional(),
+)
 const aiTaskShape = {
   taskName: z.string().trim().min(1),
   date: isoDateSchema,
-  taskType: z.enum(["event", "deadline"]).optional().default("event"),
+  taskType: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim().toLowerCase() === "deadline"
+        ? "deadline"
+        : "event",
+    z.enum(["event", "deadline"]),
+  ),
   startTime: optionalTimeSchema,
   endTime: optionalEndTimeSchema,
-  location: optionalLocationSchema,
-  sourceMessageId: z.string().trim().min(1).optional(),
-  isExpired: z.boolean().optional().default(false),
+  location: optionalLooseStringSchema,
+  reminder: optionalLooseStringSchema,
+  priority: optionalLooseStringSchema,
+  sourceMessageId: optionalLooseStringSchema,
+  isExpired: z.preprocess(
+    (value) => value === true || value === "true",
+    z.boolean(),
+  ),
 }
 
 function createAiTaskSchema({ requireSourceMessageId }: { requireSourceMessageId: boolean }) {
-  return z
-    .object({
-      ...aiTaskShape,
-      sourceMessageId: requireSourceMessageId
-        ? z.string().trim().min(1)
-        : aiTaskShape.sourceMessageId,
-    })
+  return z.preprocess(
+    normalizeIncomingAiTask,
+    z
+    .object(aiTaskShape)
+    .passthrough()
     .superRefine((task, ctx) => {
       const startTime =
         typeof task.startTime === "string" ? task.startTime.trim() : ""
       const endTime =
         typeof task.endTime === "string" ? task.endTime.trim() : ""
+      const sourceMessageId =
+        typeof task.sourceMessageId === "string" ? task.sourceMessageId.trim() : ""
+
+      if (requireSourceMessageId && !sourceMessageId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "group_parse 任务必须提供 sourceMessageId",
+          path: ["sourceMessageId"],
+        })
+      }
 
       if (task.taskType === "deadline") {
         if (!startTime && !endTime) {
@@ -50,7 +106,8 @@ function createAiTaskSchema({ requireSourceMessageId }: { requireSourceMessageId
           path: ["startTime"],
         })
       }
-    })
+    }),
+  )
 }
 
 export const AiTaskSchema = createAiTaskSchema({ requireSourceMessageId: false })
@@ -142,6 +199,8 @@ export function normalizeTaskShape(
     typeof task.endTime === "string" ? task.endTime.trim() : ""
   const normalizedLocation =
     typeof task.location === "string" ? task.location.trim() : ""
+  const normalizedReminder =
+    typeof task.reminder === "string" ? task.reminder.trim() : ""
   const normalizedSourceMessageId =
     typeof task.sourceMessageId === "string" ? task.sourceMessageId.trim() : ""
   return normalizeAiTask({
@@ -154,6 +213,7 @@ export function normalizeTaskShape(
         : normalizedEndTime || undefined,
     location: normalizedLocation,
     taskType: normalizedTaskType,
+    reminder: normalizedReminder === "30m" ? "30m" : undefined,
     sourceMessageId: normalizedSourceMessageId || undefined,
     endTimeInferred:
       normalizedTaskType === "deadline" ? false : !normalizedEndTime,

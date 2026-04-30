@@ -6,6 +6,14 @@ export const DEFAULT_TASK_DURATION_MINUTES = 60
 export const BUFFER_WARNING_MINUTES = 10
 export type TaskReminder = "30m"
 
+function generateTaskId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 // Helper to convert time string to minutes for comparison
 function timeToMinutes(time: string): number {
   const [hours, minutes] = time.split(":").map(Number)
@@ -196,6 +204,49 @@ export interface Task {
   attachments?: Attachment[]
 }
 
+type TaskIdentity = Pick<Task, "title" | "date" | "time" | "endTime">
+
+function normalizeIdentityPart(value: string | undefined) {
+  return (value || "").trim().toLowerCase()
+}
+
+export function isSameTaskIdentity(
+  taskA: TaskIdentity,
+  taskB: TaskIdentity,
+): boolean {
+  return (
+    normalizeIdentityPart(taskA.title) === normalizeIdentityPart(taskB.title) &&
+    normalizeIdentityPart(taskA.date) === normalizeIdentityPart(taskB.date) &&
+    normalizeIdentityPart(taskA.time) === normalizeIdentityPart(taskB.time) &&
+    normalizeIdentityPart(taskA.endTime) === normalizeIdentityPart(taskB.endTime)
+  )
+}
+
+function ensureUniqueTaskId(task: Task, occupiedIds: Set<string>): Task {
+  const normalizedId = task.id?.trim()
+
+  if (normalizedId && !occupiedIds.has(normalizedId)) {
+    occupiedIds.add(normalizedId)
+    return {
+      ...task,
+      id: normalizedId,
+    }
+  }
+
+  let nextId = generateTaskId()
+
+  while (occupiedIds.has(nextId)) {
+    nextId = generateTaskId()
+  }
+
+  occupiedIds.add(nextId)
+
+  return {
+    ...task,
+    id: nextId,
+  }
+}
+
 interface TaskStore {
   tasks: Task[]
   inboxTasks: Task[]
@@ -206,7 +257,6 @@ interface TaskStore {
   removeTask: (taskId: string) => void
   clearTasks: () => void
   hasTask: (taskId: string) => boolean
-  findTaskByTitle: (title: string) => Task | undefined
   markMessageAsProcessed: (messageId: string) => void
   // Inbox methods
   addToInbox: (task: Task) => void
@@ -222,18 +272,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   processedMessageIds: [],
   addTask: (task) =>
     set((state) => {
-      // Prevent duplicates
-      if (state.tasks.some((t) => t.id === task.id)) {
-        return state
-      }
-      // Auto-sort when adding
-      return { tasks: sortTasksByTime([...state.tasks, task]) }
+      const occupiedIds = new Set([
+        ...state.tasks.map((existingTask) => existingTask.id),
+        ...state.inboxTasks.map((existingTask) => existingTask.id),
+      ])
+      const normalizedTask = ensureUniqueTaskId(task, occupiedIds)
+
+      return { tasks: sortTasksByTime([...state.tasks, normalizedTask]) }
     }),
   addTasks: (tasks) =>
     set((state) => {
-      const newTasks = tasks.filter(
-        (task) => !state.tasks.some((t) => t.id === task.id)
-      )
+      const occupiedIds = new Set([
+        ...state.tasks.map((existingTask) => existingTask.id),
+        ...state.inboxTasks.map((existingTask) => existingTask.id),
+      ])
+      const newTasks = tasks.map((task) => ensureUniqueTaskId(task, occupiedIds))
       return { tasks: sortTasksByTime([...state.tasks, ...newTasks]) }
     }),
   updateTask: (taskId, updates) =>
@@ -248,7 +301,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     })),
   clearTasks: () => set({ tasks: [] }),
   hasTask: (taskId) => get().tasks.some((t) => t.id === taskId),
-  findTaskByTitle: (title) => get().tasks.find((t) => t.title === title),
   markMessageAsProcessed: (messageId) =>
     set((state) => {
       const normalizedMessageId = messageId.trim()
@@ -264,10 +316,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // Inbox methods
   addToInbox: (task) =>
     set((state) => {
-      if (state.inboxTasks.some((t) => t.id === task.id)) {
-        return state
-      }
-      return { inboxTasks: [...state.inboxTasks, task] }
+      const occupiedIds = new Set([
+        ...state.tasks.map((existingTask) => existingTask.id),
+        ...state.inboxTasks.map((existingTask) => existingTask.id),
+      ])
+      const normalizedTask = ensureUniqueTaskId(task, occupiedIds)
+      return { inboxTasks: [...state.inboxTasks, normalizedTask] }
     }),
   removeFromInbox: (taskId) =>
     set((state) => ({
@@ -286,13 +340,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const updatedTask = scheduleData 
         ? { ...task, date: scheduleData.date, time: scheduleData.time }
         : task
+      const occupiedIds = new Set([
+        ...state.tasks.map((existingTask) => existingTask.id),
+        ...state.inboxTasks
+          .filter((existingTask) => existingTask.id !== taskId)
+          .map((existingTask) => existingTask.id),
+      ])
+      const normalizedTask = ensureUniqueTaskId(updatedTask, occupiedIds)
       return {
         inboxTasks: state.inboxTasks.filter((t) => t.id !== taskId),
-        tasks: [...state.tasks, updatedTask],
+        tasks: sortTasksByTime([...state.tasks, normalizedTask]),
         processedMessageIds:
-          updatedTask.sourceMessageId &&
-          !state.processedMessageIds.includes(updatedTask.sourceMessageId)
-            ? [...state.processedMessageIds, updatedTask.sourceMessageId]
+          normalizedTask.sourceMessageId &&
+          !state.processedMessageIds.includes(normalizedTask.sourceMessageId)
+            ? [...state.processedMessageIds, normalizedTask.sourceMessageId]
             : state.processedMessageIds,
       }
     }),

@@ -9,7 +9,7 @@ import type { AiTask, ChatRouteResponse } from "@/lib/ai/types"
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-export const runtime = "nodejs"
+export const runtime = "edge"
 export const maxDuration = 60
 
 function errorResponse(status: number, code: string, message: string) {

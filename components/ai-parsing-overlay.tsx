@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Plus, Check, Copy } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useTaskStore, Task, checkTaskConflict, checkTaskBufferWarning } from "@/hooks/use-task-store"
+import { useTaskStore, Task, checkTaskConflict, checkTaskBufferWarning, isSameTaskIdentity } from "@/hooks/use-task-store"
 import { useCourseStore, checkCourseConflict, checkCourseBufferWarning } from "@/hooks/use-course-store"
 
 // Task data for this overlay (宣讲会)
@@ -133,9 +133,9 @@ export function AiParsingOverlay({ isOpen, onClose, onSaveToTimeline }: AiParsin
     onSaveToTimeline()
   }
 
-  // Check if task is already in store by matching title
+  // Check if task is already in store by matching task identity
   const isTaskInStore = (task: Task) => {
-    return storeTasks.some(t => t.title === task.title)
+    return storeTasks.some((currentTask) => isSameTaskIdentity(currentTask, task))
   }
 
   // Count how many tasks are not yet added

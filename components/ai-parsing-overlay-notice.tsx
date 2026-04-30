@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Check, AlertTriangle, Pencil, Save, Inbox, Paperclip, FileImage, ArrowRight, Bell } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { checkTaskConflict, hasTightBuffer, hasTimeOverlap, useTaskStore, Task } from "@/hooks/use-task-store"
+import { checkTaskConflict, hasTightBuffer, hasTimeOverlap, isSameTaskIdentity, useTaskStore, Task } from "@/hooks/use-task-store"
 import { checkCourseConflict, useCourseStore } from "@/hooks/use-course-store"
 import { toast } from "@/hooks/use-toast"
 
@@ -234,16 +234,18 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
   }
 
   const handleRemoveFromSchedule = (task: Task) => {
-    // Find the task in store by title and remove it
-    const storeTask = storeTasks.find(t => t.title === task.title)
+    const storeTask = storeTasks.find((currentTask) =>
+      isSameTaskIdentity(currentTask, task),
+    )
     if (storeTask) {
       removeTask(storeTask.id)
     }
   }
 
   const handleRemoveFromInbox = (task: Task) => {
-    // Find the task in inbox by title and remove it
-    const inboxTask = inboxTasks.find(t => t.title === task.title)
+    const inboxTask = inboxTasks.find((currentTask) =>
+      isSameTaskIdentity(currentTask, task),
+    )
     if (inboxTask) {
       removeFromInbox(inboxTask.id)
     }
@@ -301,11 +303,11 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
 
   // Check if task is already in store or inbox by matching title
   const isTaskInStore = (task: Task) => {
-    return storeTasks.some(t => t.title === task.title)
+    return storeTasks.some((currentTask) => isSameTaskIdentity(currentTask, task))
   }
   
   const isTaskInInbox = (task: Task) => {
-    return inboxTasks.some(t => t.title === task.title)
+    return inboxTasks.some((currentTask) => isSameTaskIdentity(currentTask, task))
   }
 
   const getHardConflictMessage = (task: Task, existingTasks: Task[]) => {

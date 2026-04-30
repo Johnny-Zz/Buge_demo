@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Check, Inbox, Pencil, Save, Paperclip, FileImage, ArrowRight, Bell } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { checkTaskConflict, useTaskStore, Task } from "@/hooks/use-task-store"
+import { checkTaskConflict, isSameTaskIdentity, useTaskStore, Task } from "@/hooks/use-task-store"
 import { checkCourseConflict, useCourseStore } from "@/hooks/use-course-store"
 import { toast } from "@/hooks/use-toast"
 
@@ -236,14 +236,18 @@ export function AiParsingOverlayCompact({
   }
 
   const handleRemoveFromSchedule = (task: Task) => {
-    const storeTask = storeTasks.find(t => t.title === task.title)
+    const storeTask = storeTasks.find((currentTask) =>
+      isSameTaskIdentity(currentTask, task),
+    )
     if (storeTask) {
       removeTask(storeTask.id)
     }
   }
 
   const handleRemoveFromInbox = (task: Task) => {
-    const inboxTask = inboxTasks.find(t => t.title === task.title)
+    const inboxTask = inboxTasks.find((currentTask) =>
+      isSameTaskIdentity(currentTask, task),
+    )
     if (inboxTask) {
       removeFromInbox(inboxTask.id)
     }
@@ -307,11 +311,11 @@ export function AiParsingOverlayCompact({
 
   // Check if task is already in store by matching title
   const isTaskInStore = (task: Task) => {
-    return storeTasks.some(t => t.title === task.title)
+    return storeTasks.some((currentTask) => isSameTaskIdentity(currentTask, task))
   }
   
   const isTaskInInbox = (task: Task) => {
-    return inboxTasks.some(t => t.title === task.title)
+    return inboxTasks.some((currentTask) => isSameTaskIdentity(currentTask, task))
   }
 
   const getHardConflictMessage = (task: Task, existingTasks: Task[]) => {

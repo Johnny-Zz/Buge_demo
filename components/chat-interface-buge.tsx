@@ -5,7 +5,7 @@ import { ArrowLeft, Menu, Mic, Smile, Plus, Check, MapPin, Sparkles, Lightbulb, 
 import { aiTaskToStoreTask, buildAiContext, callBugeAi, createChatRouteRequest } from "@/lib/ai/client"
 import { addMinutesToTime } from "@/lib/ai/date"
 import type { AiTask } from "@/lib/ai/types"
-import { useTaskStore, Task, checkTaskConflict, checkTaskBufferWarning, getOverlappingTaskIds, hasTimeOverlap } from "@/hooks/use-task-store"
+import { useTaskStore, Task, checkTaskConflict, checkTaskBufferWarning, getOverlappingTaskIds, hasTimeOverlap, isSameTaskIdentity } from "@/hooks/use-task-store"
 import { useCourseStore, Course, checkCourseConflict, checkCourseBufferWarning } from "@/hooks/use-course-store"
 import { useHabitStore } from "@/hooks/use-habit-store"
 import { toast } from "@/hooks/use-toast"
@@ -356,7 +356,7 @@ interface PendingAiDurationSelection {
 }
 
 export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterfaceBugeProps) {
-  const { tasks, removeTask, addTask, updateTask, findTaskByTitle, inboxTasks, removeFromInbox, updateInboxTask, moveFromInboxToSchedule, markMessageAsProcessed } = useTaskStore()
+  const { tasks, removeTask, addTask, updateTask, inboxTasks, removeFromInbox, updateInboxTask, moveFromInboxToSchedule, markMessageAsProcessed } = useTaskStore()
   const { courses, getTodayCourses, updateCourse, addCourse, removeCourse, setCourses } = useCourseStore()
   const { habits, addHabit, updateHabit, removeHabit } = useHabitStore()
   const [inputValue, setInputValue] = useState("")
@@ -561,7 +561,9 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
     }
 
     const storeTask = aiTaskToStoreTask(aiTask, "chat")
-    const existingTask = findTaskByTitle(storeTask.title)
+    const existingTask = tasks.find((currentTask) =>
+      isSameTaskIdentity(currentTask, storeTask),
+    )
 
     if (existingTask) {
       setPendingConfirmation({

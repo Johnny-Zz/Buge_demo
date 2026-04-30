@@ -12,6 +12,23 @@ interface BuildAiContextOptions {
   timezone?: string
 }
 
+function normalizeContextTimeValue(time?: string) {
+  if (!time) {
+    return undefined
+  }
+
+  const normalizedTime = time.trim().replace("：", ":")
+  const match = normalizedTime.match(/^(\d{1,2}):(\d{1,2})$/)
+
+  if (!match) {
+    return normalizedTime
+  }
+
+  const hours = match[1].padStart(2, "0")
+  const minutes = match[2].padStart(2, "0")
+  return `${hours}:${minutes}`
+}
+
 function formatIsoDateForTimezone(nowIso: string, timezone: string): string {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
@@ -66,8 +83,8 @@ export function buildAiContext({
       id: task.id,
       title: task.title,
       date: mmDdToIso(task.date, nowIso),
-      time: task.time,
-      endTime: task.endTime,
+      time: normalizeContextTimeValue(task.time) || task.time,
+      endTime: normalizeContextTimeValue(task.endTime),
     }))
   const currentScheduleCourses = courses
     .filter((course) => course.dayOfWeek === currentScheduleDayOfWeek)
@@ -75,8 +92,8 @@ export function buildAiContext({
       id: course.id,
       name: course.name,
       dayOfWeek: course.dayOfWeek,
-      startTime: course.startTime,
-      endTime: course.endTime,
+      startTime: normalizeContextTimeValue(course.startTime) || course.startTime,
+      endTime: normalizeContextTimeValue(course.endTime) || course.endTime,
       location: course.location,
     }))
 
@@ -91,15 +108,15 @@ export function buildAiContext({
       id: task.id,
       title: task.title,
       date: mmDdToIso(task.date, nowIso),
-      time: task.time,
-      endTime: task.endTime,
+      time: normalizeContextTimeValue(task.time) || task.time,
+      endTime: normalizeContextTimeValue(task.endTime),
     })),
     courses: courses.map((course) => ({
       id: course.id,
       name: course.name,
       dayOfWeek: course.dayOfWeek,
-      startTime: course.startTime,
-      endTime: course.endTime,
+      startTime: normalizeContextTimeValue(course.startTime) || course.startTime,
+      endTime: normalizeContextTimeValue(course.endTime) || course.endTime,
       location: course.location,
     })),
     currentSchedule: {

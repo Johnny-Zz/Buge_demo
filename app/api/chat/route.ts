@@ -175,6 +175,7 @@ function buildCurrentScheduleMessage(context: {
   return [
     `当前重点排程日期：${currentSchedule.date}`,
     "你必须先分析这一天的 currentSchedule，找到连续空白时段，再决定是否可以安排到今天。",
+    "以下 currentSchedule 中的时间都已经标准化为 HH:mm 的 24 小时制，请据此精确计算任务时长与空档长度。",
     "currentSchedule.tasks:",
     taskLines,
     "currentSchedule.courses:",

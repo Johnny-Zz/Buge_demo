@@ -53,6 +53,13 @@ function buildSchedulingRules() {
     "你会收到 context.currentSchedule、context.tasks、context.courses 作为排程上下文。",
     "当用户未明确指定日期时，必须优先安排在系统当前时间当天的可用时段。只有当今天剩余的连续空白时段已经绝对无法容纳该任务时，才允许顺延到明天。",
     "你必须先分析 context.currentSchedule，找到当天的连续空白时段，再决定具体时间。",
+    "最高优先级：带时长的 DDL 任务必须使用严格倒推排程算法。",
+    "当用户提供了截止时间（deadline），且原文明确给出任务时长，或你能从原文中可靠识别出明确时长（例如“花30分钟提交 / 需要1小时完成 / 半小时内处理完”）时，必须先锁定这段时长，再排时间。",
+    "严禁压缩时长：你输出的 endTime - startTime 必须绝对等于该任务所需时长，绝不能为了塞进缝隙把 30 分钟压成 10 分钟，或把 1 小时压成 20 分钟。",
+    "你必须以 deadline 为终点，结合 context.currentSchedule 从后往前寻找第一个能完整容纳该时长的连续空白时间块，而不是无脑贴着 deadline 排。",
+    "只有当前后都至少保留 10 分钟缓冲，且这个连续空档完整放得下所需时长时，才能把任务放进去。",
+    "如果离 deadline 最近的缝隙放不下，例如 deadline 是 15:40、任务需要 30 分钟，而 15:30-15:40 只有 10 分钟，那么这个缝隙绝对不可用；你必须继续向前寻找更早但完整的可用时段，例如 14:00-14:30。",
+    "如果 deadline 当天不存在满足时长和缓冲要求的连续空档，可以安排到更早的日期，但绝不能晚于 deadline，也绝不能缩短任务时长。",
     "严禁将需要高度专注的任务，例如开会、学习、自习、复习、写作业、准备材料，塞进两个课程或任务之间小于 1 小时的碎片缝隙。",
     "新安排的任务与前后已有日程之间，必须尽量保留至少 15 到 20 分钟的物理缓冲时间，绝不能首尾相连。",
     "如果用户没有提供结束时间或持续时长，绝对不能自行脑补；除了 deadline 任务外，应保留 startTime 并省略 endTime，让前端继续追问时长。",
@@ -120,7 +127,25 @@ Few-shot 示例 D：
     ],
   },
 })}
-输出：{"action":"query","message":"你明天有 1 项任务：20:00-21:00 开组会。"}`
+输出：{"action":"query","message":"你明天有 1 项任务：20:00-21:00 开组会。"}
+
+Few-shot 示例 E：
+输入：${JSON.stringify({
+  scene: "quick_task",
+  input: "明天下午3点40前留30分钟提交实验报告",
+  context: {
+    nowIso: "2026-04-29T10:00:00+08:00",
+    timezone: "Asia/Shanghai",
+    currentSchedule: {
+      date: "2026-04-30",
+      tasks: [],
+      courses: [
+        { id: "course_ddl_1", name: "职业发展指导", dayOfWeek: 4, startTime: "15:00", endTime: "15:30", location: "综合楼108" },
+      ],
+    },
+  },
+})}
+输出：{"action":"create","message":"已在截止前为提交实验报告预留完整 30 分钟。","task":{"taskName":"提交实验报告","date":"2026-04-30","taskType":"deadline","startTime":"14:20","endTime":"14:50","location":"","isExpired":false}}`
   }
 
   if (scene === "habit_schedule") {

@@ -1,6 +1,8 @@
 export type AiScene = "quick_task" | "group_parse" | "habit_schedule"
 export type AiTaskType = "event" | "deadline"
 export type AiReminder = "30m"
+export type AiAction = "create" | "update" | "delete" | "query" | "chat"
+export type AiTargetType = "task" | "course"
 
 export interface AiTask {
   taskName: string
@@ -21,6 +23,7 @@ export interface HabitContext {
 }
 
 export interface TaskContext {
+  id: string
   title: string
   date: string
   time: string
@@ -28,11 +31,20 @@ export interface TaskContext {
 }
 
 export interface CourseContext {
+  id: string
   name: string
   dayOfWeek: number
   startTime: string
   endTime: string
   location: string
+}
+
+export interface AiAgentCommand {
+  action: AiAction
+  targetType?: AiTargetType
+  targetId?: string
+  message?: string
+  task?: AiTask
 }
 
 export interface ChatRouteRequest {
@@ -53,5 +65,5 @@ export interface ChatRouteRequest {
 }
 
 export type ChatRouteResponse =
-  | { ok: true; scene: AiScene; data: AiTask | AiTask[] }
+  | { ok: true; scene: AiScene; data: AiAgentCommand | AiTask[] }
   | { ok: false; error: { code: string; message: string } }

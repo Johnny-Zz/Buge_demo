@@ -3,8 +3,8 @@
 import { useState, useRef, useEffect } from "react"
 import { ArrowLeft, Menu, Mic, Smile, Plus, Check, MapPin, Sparkles, Lightbulb, X, Send, Trash2, Edit3, ChevronDown, Pencil, StickyNote, Calendar, School, Loader2, Download, Settings, Inbox, ArrowRight, Clock, MessageSquare, CalendarDays, ChevronLeft, ChevronRight, Bell } from "lucide-react"
 import { aiTaskToStoreTask, buildAiContext, callBugeAi, createChatRouteRequest } from "@/lib/ai/client"
-import { addMinutesToTime } from "@/lib/ai/date"
-import type { AiTask } from "@/lib/ai/types"
+import { addMinutesToTime, normalizeAiTask } from "@/lib/ai/date"
+import type { AiAgentCommand, AiTask } from "@/lib/ai/types"
 import { useTaskStore, Task, checkTaskConflict, checkTaskBufferWarning, getOverlappingTaskIds, hasTimeOverlap, isSameTaskIdentity } from "@/hooks/use-task-store"
 import { useCourseStore, Course, checkCourseConflict, checkCourseBufferWarning } from "@/hooks/use-course-store"
 import { useHabitStore } from "@/hooks/use-habit-store"
@@ -353,10 +353,18 @@ interface PendingConfirmation {
 interface PendingAiDurationSelection {
   task: AiTask
   insight: string
+  action: "create" | "update"
+  targetType?: "task" | "course"
+  targetId?: string
+}
+
+interface AgentFeedback {
+  tone: "info" | "success" | "warning"
+  message: string
 }
 
 export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterfaceBugeProps) {
-  const { tasks, removeTask, addTask, updateTask, inboxTasks, removeFromInbox, updateInboxTask, moveFromInboxToSchedule, markMessageAsProcessed } = useTaskStore()
+  const { tasks, deleteTask, addTask, updateTask, inboxTasks, removeFromInbox, updateInboxTask, moveFromInboxToSchedule, markMessageAsProcessed } = useTaskStore()
   const { courses, getTodayCourses, updateCourse, addCourse, removeCourse, setCourses } = useCourseStore()
   const { habits, addHabit, updateHabit, removeHabit } = useHabitStore()
   const [inputValue, setInputValue] = useState("")
@@ -370,6 +378,7 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
   const [pendingAiDurationSelection, setPendingAiDurationSelection] = useState<PendingAiDurationSelection | null>(null)
   const [customAiDuration, setCustomAiDuration] = useState("")
   const [showCustomDurationInput, setShowCustomDurationInput] = useState(false)
+  const [agentFeedback, setAgentFeedback] = useState<AgentFeedback | null>(null)
   
   // Buffer time warning state (10-minute gap warning)
   const [showBufferWarning, setShowBufferWarning] = useState(false)
@@ -505,7 +514,7 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
         description: validation.hardConflictMessage,
         variant: "destructive",
       })
-      return
+      return false
     }
 
     if (validation.needsBufferConfirmation) {
@@ -524,7 +533,7 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
         },
       })
       setShowBufferWarning(true)
-      return
+      return false
     }
 
     if (existingTaskId) {
@@ -537,7 +546,7 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
         insight,
         reminder: task.reminder,
       })
-      return
+      return true
     }
 
     addTask({
@@ -545,6 +554,7 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
       endTime: resolveEndTime(task.time, task.endTime),
       insight,
     })
+    return true
   }
 
   const closeAiDurationPicker = () => {
@@ -554,9 +564,9 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
     setCustomAiDuration("")
   }
 
-  const finalizeAiTask = (aiTask: AiTask, insight: string) => {
+  const finalizeAiCreateTask = (aiTask: AiTask, insight: string) => {
     if (!aiTask.endTime?.trim()) {
-      promptForAiDuration(aiTask, insight)
+      promptForAiDuration(aiTask, insight, "create")
       return
     }
 
@@ -581,15 +591,137 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
       return
     }
 
-    applyParsedTask(storeTask, insight)
+    if (applyParsedTask(storeTask, insight)) {
+      setAgentFeedback({
+        tone: "success",
+        message: insight,
+      })
+    }
   }
 
-  const promptForAiDuration = (task: AiTask, insight: string) => {
+  const handleAgentCourseUpdate = (
+    command: AiAgentCommand,
+    insight: string,
+  ) => {
+    if (!command.targetId || !command.task) {
+      throw new Error("AI 未返回可执行的课程更新结果")
+    }
+
+    const targetCourse = courses.find((course) => course.id === command.targetId)
+
+    if (!targetCourse) {
+      throw new Error("未找到要修改的课程")
+    }
+
+    const normalizedTask = normalizeAiTask(command.task)
+    const originalDuration =
+      timeToMinutes(targetCourse.endTime) - timeToMinutes(targetCourse.startTime)
+    const nextStartTime = normalizedTask.startTime || targetCourse.startTime
+    const nextEndTime =
+      normalizedTask.endTime?.trim() || addMinutesToTime(nextStartTime, originalDuration)
+    const conflictingCourse = checkCourseConflict(
+      {
+        startTime: nextStartTime,
+        endTime: nextEndTime,
+        dayOfWeek: targetCourse.dayOfWeek,
+      },
+      courses,
+      targetCourse.id,
+    )
+
+    if (conflictingCourse) {
+      toast({
+        title: "课程时间冲突",
+        description: `与课程【${conflictingCourse.name}】(${conflictingCourse.startTime}-${conflictingCourse.endTime}) 重叠`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    updateCourse(targetCourse.id, {
+      name: normalizedTask.taskName || targetCourse.name,
+      startTime: nextStartTime,
+      endTime: nextEndTime,
+      location: normalizedTask.location?.trim() || targetCourse.location,
+    })
+    setAgentFeedback({
+      tone: "success",
+      message: insight,
+    })
+  }
+
+  const handleAgentUpdateTask = (
+    command: AiAgentCommand,
+    insight: string,
+  ) => {
+    if (!command.targetId || !command.task) {
+      throw new Error("AI 未返回可执行的更新结果")
+    }
+
+    if (command.targetType === "course") {
+      handleAgentCourseUpdate(command, insight)
+      return
+    }
+
+    const targetTask = tasks.find((task) => task.id === command.targetId)
+
+    if (!targetTask) {
+      throw new Error("未找到要修改的任务")
+    }
+
+    const targetTaskDuration =
+      targetTask.endTime && targetTask.endTime.trim()
+        ? timeToMinutes(targetTask.endTime) - timeToMinutes(targetTask.time)
+        : null
+    const updateTaskPayload =
+      !command.task.endTime?.trim() && targetTaskDuration && targetTaskDuration > 0
+        ? {
+            ...command.task,
+            endTime: addMinutesToTime(command.task.startTime, targetTaskDuration),
+          }
+        : command.task
+
+    if (!updateTaskPayload.endTime?.trim()) {
+      promptForAiDuration(updateTaskPayload, insight, "update", "task", targetTask.id)
+      return
+    }
+
+    const storeTask = aiTaskToStoreTask(updateTaskPayload, "chat-update")
+    if (applyParsedTask(
+      {
+        ...targetTask,
+        title: storeTask.title,
+        date: storeTask.date,
+        time: storeTask.time,
+        endTime: storeTask.endTime,
+        location: storeTask.location,
+        reminder: storeTask.reminder,
+      },
+      insight,
+      targetTask.id,
+    )) {
+      setAgentFeedback({
+        tone: "success",
+        message: insight,
+      })
+    }
+  }
+
+  const promptForAiDuration = (
+    task: AiTask,
+    insight: string,
+    action: "create" | "update",
+    targetType?: "task" | "course",
+    targetId?: string,
+  ) => {
     setCustomAiDuration("")
     setShowCustomDurationInput(false)
     setPendingAiDurationSelection({
       task,
       insight,
+      action,
+      targetType,
+      targetId,
     })
     setShowAiDurationPicker(true)
   }
@@ -604,8 +736,25 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
     }
 
     const insight = pendingAiDurationSelection.insight
+    const pendingAction = pendingAiDurationSelection.action
+    const targetType = pendingAiDurationSelection.targetType
+    const targetId = pendingAiDurationSelection.targetId
     closeAiDurationPicker()
-    finalizeAiTask(adjustedTask, insight)
+
+    if (pendingAction === "update") {
+      handleAgentUpdateTask(
+        {
+          action: "update",
+          targetType,
+          targetId,
+          task: adjustedTask,
+        },
+        insight,
+      )
+      return
+    }
+
+    finalizeAiCreateTask(adjustedTask, insight)
   }
 
   const handleCompleteTask = (taskId: string) => {
@@ -613,7 +762,72 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
     if (taskToComplete?.sourceMessageId) {
       markMessageAsProcessed(taskToComplete.sourceMessageId)
     }
-    removeTask(taskId)
+    deleteTask(taskId)
+  }
+
+  const handleAgentDelete = (command: AiAgentCommand, insight: string) => {
+    if (!command.targetId) {
+      throw new Error("AI 未返回要删除的目标")
+    }
+
+    if (command.targetType === "course") {
+      const targetCourse = courses.find((course) => course.id === command.targetId)
+
+      if (!targetCourse) {
+        throw new Error("未找到要删除的课程")
+      }
+
+      removeCourse(targetCourse.id)
+      setAgentFeedback({
+        tone: "success",
+        message: insight,
+      })
+      return
+    }
+
+    const targetTask = tasks.find((task) => task.id === command.targetId)
+
+    if (!targetTask) {
+      throw new Error("未找到要删除的任务")
+    }
+
+    deleteTask(targetTask.id)
+    setAgentFeedback({
+      tone: "success",
+      message: insight,
+    })
+  }
+
+  const handleAgentCommand = (command: AiAgentCommand, scene: "quick_task" | "habit_schedule") => {
+    const insight =
+      command.message?.trim() ||
+      (scene === "habit_schedule"
+        ? "已结合习惯、课表与空闲时间完成处理"
+        : "已根据你的自然语言安排完成处理")
+
+    if (command.action === "chat" || command.action === "query") {
+      setAgentFeedback({
+        tone: "info",
+        message: insight,
+      })
+      return
+    }
+
+    if (command.action === "delete") {
+      handleAgentDelete(command, insight)
+      return
+    }
+
+    if (command.action === "update") {
+      handleAgentUpdateTask(command, insight)
+      return
+    }
+
+    if (!command.task) {
+      throw new Error("AI 未返回可执行的任务结果")
+    }
+
+    finalizeAiCreateTask(command.task, insight)
   }
 
   const handleSuggestionChipClick = (keyword: string) => {
@@ -639,10 +853,11 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
 
   const triggerSmartScheduling = async (userMessage: string) => {
     setIsProcessing(true)
+    setAgentFeedback(null)
 
     try {
       const hasExplicitTime = Boolean(extractExplicitTime(userMessage))
-      const scene = hasExplicitTime ? "quick_task" : "habit_schedule"
+      const scene: "quick_task" | "habit_schedule" = hasExplicitTime ? "quick_task" : "habit_schedule"
       const response = await callBugeAi(
         createChatRouteRequest(
           scene,
@@ -655,23 +870,11 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
         ),
       )
 
-      const aiTask = Array.isArray(response) ? response[0] : response
-
-      if (!aiTask) {
-        throw new Error("AI 未返回可用的任务结果")
+      if (Array.isArray(response)) {
+        throw new Error("AI 返回了错误的结果结构")
       }
 
-      const insight =
-        scene === "habit_schedule"
-          ? "智能排程：已结合习惯、课表与空闲时间生成建议"
-          : "精准识别：已根据自然语言提取日程要素"
-
-      if (!aiTask.endTime?.trim() || aiTask.endTimeInferred) {
-        promptForAiDuration(aiTask, insight)
-        return
-      }
-
-      finalizeAiTask(aiTask, insight)
+      handleAgentCommand(response, scene)
     } catch (error) {
       const message = error instanceof Error ? error.message : "请稍后重试"
       toast({
@@ -911,25 +1114,74 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
       {/* Main Content - Agent Mode */}
       {viewMode === 'agent' && (
         <div className="flex-1 overflow-y-auto px-3 py-4">
-          {sortedTimelineItems.length === 0 && !isProcessing && !pendingConfirmation ? (
+          {sortedTimelineItems.length === 0 && tasks.length === 0 && !isProcessing && !pendingConfirmation && !agentFeedback ? (
             /* Empty State */
             <div className="flex flex-col items-center justify-center h-full">
-              <div className="w-20 h-20 mb-6 rounded-full bg-gradient-to-br from-sky-300/20 to-sky-400/20 flex items-center justify-center">
-                <svg viewBox="0 0 100 100" className="w-12 h-12 opacity-50">
-                  <ellipse cx="50" cy="58" rx="26" ry="22" fill="#7dd3fc"/>
-                  <circle cx="68" cy="35" r="14" fill="#7dd3fc"/>
-                  <polygon points="82,35 92,38 82,41" fill="#fbbf24"/>
-                  <circle cx="72" cy="32" r="3" fill="#333"/>
-                  <ellipse cx="45" cy="55" rx="15" ry="10" fill="#bae6fd"/>
-                  <polygon points="24,55 12,50 12,68 24,63" fill="#bae6fd"/>
-                </svg>
+              <div className="w-full max-w-[320px] rounded-3xl border border-sky-500/20 bg-gradient-to-br from-sky-500/10 to-white/5 p-5 shadow-xl backdrop-blur-xl">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-300 to-sky-400">
+                    <Sparkles className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-base font-semibold text-white">你好！我是你的智能行动管家不鸽。</p>
+                      <p className="mt-1 text-sm leading-relaxed text-gray-300">
+                        你不需要自己动手操作，直接用自然语言告诉我你的安排即可。例如：
+                      </p>
+                    </div>
+                    <div className="space-y-2 text-sm text-gray-200">
+                      <p>📌 “明晚 8 点要去开组会” (自动新建)</p>
+                      <p>🗑️ “取消明天的健身计划” (自动删除)</p>
+                      <p>⏱️ “把算法课推迟半小时” (自动修改)</p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <p className="text-gray-500 text-sm text-center leading-relaxed px-8">
-                添加新的任务，不鸽帮你更好地规划
-              </p>
             </div>
           ) : (
           <div className="space-y-4">
+            {sortedTimelineItems.length === 0 && !isProcessing && !pendingConfirmation && !agentFeedback && tasks.length > 0 && (
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-5 text-center">
+                <p className="text-sm font-medium text-white">这一天暂未安排日程</p>
+                <p className="mt-1 text-xs text-gray-500">你可以继续告诉不鸽新的计划，或切换到其他日期查看安排。</p>
+              </div>
+            )}
+
+            {agentFeedback && (
+              <div className="flex gap-2.5 items-start animate-in fade-in slide-in-from-bottom-2">
+                <div
+                  className={cn(
+                    "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg",
+                    agentFeedback.tone === "success"
+                      ? "bg-gradient-to-br from-emerald-400 to-teal-500"
+                      : agentFeedback.tone === "warning"
+                      ? "bg-gradient-to-br from-amber-400 to-orange-500"
+                      : "bg-gradient-to-br from-sky-300 to-sky-400",
+                  )}
+                >
+                  <Sparkles className="h-5 w-5 text-white" />
+                </div>
+                <div className="flex-1 max-w-[320px]">
+                  <div className="mb-1 flex items-center gap-1.5">
+                    <span className="rounded bg-sky-500/20 px-1.5 py-0.5 text-xs text-sky-400">AI</span>
+                    <span className="text-sm text-gray-400">不鸽 Agent</span>
+                  </div>
+                  <div
+                    className={cn(
+                      "rounded-xl rounded-tl-sm border p-3 backdrop-blur-sm",
+                      agentFeedback.tone === "success"
+                        ? "border-emerald-500/30 bg-emerald-500/10"
+                        : agentFeedback.tone === "warning"
+                        ? "border-amber-500/30 bg-amber-500/10"
+                        : "border-white/10 bg-white/10",
+                    )}
+                  >
+                    <p className="text-sm leading-relaxed text-white">{agentFeedback.message}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Processing State - Shows during smart scheduling */}
             {isProcessing && (
               <div className="flex gap-2.5 items-start animate-in fade-in slide-in-from-bottom-2">
@@ -1090,7 +1342,7 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="对不鸽说点什么..."
+              placeholder="告诉不鸽你的计划..."
               className="flex-1 bg-transparent text-white text-sm placeholder:text-gray-500 outline-none"
             />
             {inputValue.trim() && (

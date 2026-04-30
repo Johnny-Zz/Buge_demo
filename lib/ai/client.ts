@@ -1,5 +1,5 @@
 import { getClientNowIso, getClientTimezone, isoDateToMmDd, mmDdToIso, normalizeAiTask } from "@/lib/ai/date"
-import type { AiScene, AiTask, ChatRouteRequest, ChatRouteResponse } from "@/lib/ai/types"
+import type { AiAgentCommand, AiScene, AiTask, ChatRouteRequest, ChatRouteResponse } from "@/lib/ai/types"
 import type { Course } from "@/hooks/use-course-store"
 import type { Habit } from "@/hooks/use-habit-store"
 import type { Task } from "@/hooks/use-task-store"
@@ -63,6 +63,7 @@ export function buildAiContext({
   const currentScheduleTasks = tasks
     .filter((task) => mmDdToIso(task.date, nowIso) === currentScheduleDate)
     .map((task) => ({
+      id: task.id,
       title: task.title,
       date: mmDdToIso(task.date, nowIso),
       time: task.time,
@@ -71,6 +72,7 @@ export function buildAiContext({
   const currentScheduleCourses = courses
     .filter((course) => course.dayOfWeek === currentScheduleDayOfWeek)
     .map((course) => ({
+      id: course.id,
       name: course.name,
       dayOfWeek: course.dayOfWeek,
       startTime: course.startTime,
@@ -86,12 +88,14 @@ export function buildAiContext({
       content: habit.content,
     })),
     tasks: tasks.map((task) => ({
+      id: task.id,
       title: task.title,
       date: mmDdToIso(task.date, nowIso),
       time: task.time,
       endTime: task.endTime,
     })),
     courses: courses.map((course) => ({
+      id: course.id,
       name: course.name,
       dayOfWeek: course.dayOfWeek,
       startTime: course.startTime,
@@ -106,7 +110,7 @@ export function buildAiContext({
   }
 }
 
-export async function callBugeAi(request: ChatRouteRequest): Promise<AiTask | AiTask[]> {
+export async function callBugeAi(request: ChatRouteRequest): Promise<AiAgentCommand | AiTask[]> {
   const response = await fetch("/api/chat", {
     method: "POST",
     headers: {

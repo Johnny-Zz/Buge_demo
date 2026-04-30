@@ -4,7 +4,7 @@ function buildSharedRules(scene: AiScene) {
   const outputShape =
     scene === "group_parse"
       ? `{"tasks":[{"taskName":"提交第四题作业","date":"2026-04-30","taskType":"deadline","startTime":"20:00","endTime":"20:00","location":"超星学习通","sourceMessageId":"group_4_msg_3","isExpired":false}]}`
-      : `{"task":{"taskName":"开组会","date":"2026-04-30","taskType":"event","startTime":"20:00","endTime":"21:00","location":"主楼","isExpired":false}}`
+      : `{"action":"create","message":"已识别新的安排。","task":{"taskName":"开组会","date":"2026-04-30","taskType":"event","startTime":"20:00","endTime":"21:00","location":"主楼","isExpired":false}}`
 
   return [
     "你是“不鸽 (Buge)” 的时间解析引擎。",
@@ -29,6 +29,25 @@ function buildSharedRules(scene: AiScene) {
   ].join("\n")
 }
 
+function buildCrudRules() {
+  return [
+    "你必须先判断用户意图，再输出 action。",
+    'action 只能是 "create"、"update"、"delete"、"query"、"chat" 之一。',
+    "create：用户在新增一个待办或安排，例如“明晚8点开组会”“明天安排一下去健身”。",
+    "update：用户在修改已有日程，例如推迟、提前、改地点、改时间、换到明晚、顺延半小时。",
+    "delete：用户在取消、不想去了、删除、不用了、移除某个已有日程。",
+    "query：用户在查询已有安排，例如“明天有什么安排”“我晚上几点有课”“今天还有什么任务”。",
+    "chat：普通寒暄、帮助说明、无法匹配到明确日程对象时的兜底回复。",
+    "如果是 update、delete、query，必须优先从 context.tasks 中匹配；如果用户明确说的是课、课程、上课、算法课、体育课等，再从 context.courses 中匹配。",
+    '匹配到已有任务时，必须返回 targetType: "task" 和 targetId；匹配到课程时，必须返回 targetType: "course" 和 targetId。',
+    "绝对禁止编造 targetId；targetId 必须原样来自上下文目录。",
+    "如果用户要求修改已有任务，但原任务已知持续时长，且用户只改了日期/开始时间，没有改时长，就必须保留原持续时长并计算新的 endTime。",
+    "如果用户要求修改已有课程，但只改了开始时间或说“推迟半小时”，就必须保留原课程时长并同步计算新的 endTime。",
+    "如果用户要求删除/修改，但在上下文中找不到可靠目标，不要瞎猜；返回 action: chat，并在 message 里简短说明未找到对应日程。",
+    "对于 create 和 update，message 应该是 1 句简短中文确认说明；对于 query 和 chat，message 是给用户看的直接回答。",
+  ].join("\n")
+}
+
 function buildSchedulingRules() {
   return [
     "你会收到 context.currentSchedule、context.tasks、context.courses 作为排程上下文。",
@@ -43,23 +62,113 @@ function buildSchedulingRules() {
 export function buildSystemPrompt(scene: AiScene): string {
   if (scene === "quick_task") {
     return `${buildSharedRules(scene)}
-任务：从一句自然语言中提取单条待办。
-优先识别动作、真实日期、开始时间、结束时间、地点。
+任务：处理用户发给不鸽的一句自然语言日程指令。
+优先完成意图识别，再决定是 create、update、delete、query 还是 chat。
+如果 action=create 或 action=update，才输出 task 字段。
 如果是口语表达，保留最核心的任务名，不要带口头禅。
-${buildSchedulingRules()}`
+${buildCrudRules()}
+${buildSchedulingRules()}
+
+Few-shot 示例 A：
+输入：${JSON.stringify({
+  scene: "quick_task",
+  input: "明晚8点去主楼开组会",
+  context: {
+    nowIso: "2026-04-29T10:00:00+08:00",
+    timezone: "Asia/Shanghai",
+  },
+})}
+输出：{"action":"create","message":"已识别新的组会安排。","task":{"taskName":"开组会","date":"2026-04-30","taskType":"event","startTime":"20:00","endTime":"21:00","location":"主楼","isExpired":false}}
+
+Few-shot 示例 B：
+输入：${JSON.stringify({
+  scene: "quick_task",
+  input: "我不想健身了",
+  context: {
+    nowIso: "2026-04-29T10:00:00+08:00",
+    timezone: "Asia/Shanghai",
+    tasks: [
+      { id: "task_1", title: "健身", date: "2026-04-29", time: "21:00", endTime: "22:00" },
+    ],
+  },
+})}
+输出：{"action":"delete","targetType":"task","targetId":"task_1","message":"已识别你要取消今晚的健身安排。"}
+
+Few-shot 示例 C：
+输入：${JSON.stringify({
+  scene: "quick_task",
+  input: "把组会推迟到明晚",
+  context: {
+    nowIso: "2026-04-29T10:00:00+08:00",
+    timezone: "Asia/Shanghai",
+    tasks: [
+      { id: "task_2", title: "组会", date: "2026-04-29", time: "20:00", endTime: "21:00" },
+    ],
+  },
+})}
+输出：{"action":"update","targetType":"task","targetId":"task_2","message":"已把组会顺延到明晚。","task":{"taskName":"组会","date":"2026-04-30","taskType":"event","startTime":"20:00","endTime":"21:00","location":"","isExpired":false}}
+
+Few-shot 示例 D：
+输入：${JSON.stringify({
+  scene: "quick_task",
+  input: "明天有什么安排？",
+  context: {
+    nowIso: "2026-04-29T10:00:00+08:00",
+    timezone: "Asia/Shanghai",
+    tasks: [
+      { id: "task_3", title: "开组会", date: "2026-04-30", time: "20:00", endTime: "21:00" },
+    ],
+  },
+})}
+输出：{"action":"query","message":"你明天有 1 项任务：20:00-21:00 开组会。"}`
   }
 
   if (scene === "habit_schedule") {
     return `${buildSharedRules(scene)}
-任务：处理模糊排程请求。
+任务：处理用户发给不鸽的模糊自然语言日程指令。
+必须先判断意图是 create、update、delete、query 还是 chat。
+只有当 action=create 或 action=update，且用户是在安排新事项或修改已有事项时，才输出 task。
 必须参考 context.habits、context.currentSchedule、context.tasks、context.courses。
-先识别用户真正想做的事情，再结合习惯偏好推断一个合适时段。
+先识别用户真正想做的事情，再结合习惯偏好或已有日程推断一个合适结果。
 优先避免与现有课程和任务明显重叠；如果无法完全避开，也要给出最合理的建议时段。
-${buildSchedulingRules()}`
+${buildCrudRules()}
+${buildSchedulingRules()}
+
+Few-shot 示例：
+输入：${JSON.stringify({
+  scene: "habit_schedule",
+  input: "明天安排一下去健身",
+  context: {
+    nowIso: "2026-04-29T10:00:00+08:00",
+    timezone: "Asia/Shanghai",
+    habits: [{ id: "habit_1", content: "21:00-22:00 晚间运动" }],
+    currentSchedule: {
+      date: "2026-04-29",
+      tasks: [],
+      courses: [],
+    },
+  },
+})}
+输出：{"action":"create","message":"已结合你的习惯安排了健身时间。","task":{"taskName":"健身","date":"2026-04-30","taskType":"event","startTime":"21:00","endTime":"22:00","location":"","isExpired":false}}
+
+Few-shot 示例 2：
+输入：${JSON.stringify({
+  scene: "habit_schedule",
+  input: "把算法课推迟半小时",
+  context: {
+    nowIso: "2026-04-29T10:00:00+08:00",
+    timezone: "Asia/Shanghai",
+    courses: [
+      { id: "course_1", name: "算法课", dayOfWeek: 4, startTime: "08:00", endTime: "09:40", location: "主楼412" },
+    ],
+  },
+})}
+输出：{"action":"update","targetType":"course","targetId":"course_1","message":"已把算法课整体顺延半小时。","task":{"taskName":"算法课","date":"2026-04-30","taskType":"event","startTime":"08:30","endTime":"10:10","location":"主楼412","isExpired":false}}`
   }
 
   return `${buildSharedRules(scene)}
 任务：从群聊长文本中提取所有可执行待办。
+最高优先级规则：严格去重。仔细分析文本，如果不同句子或不同描述指向的是同一个事件，必须合并成一个任务输出，绝对禁止输出内容高度相似或重复的任务卡片。
 在校园场景中，以下内容都必须视为有效待办并提取出来：
 1. 任何需要本人到场或参加的活动，例如讲座、比赛、开会、宣讲会、培训、补课、就业指导课、班会、答辩、面试、签到会场活动。
 2. 任何需要执行的动作，例如签到、提交材料、交表、携带简历、携带证件、扫码报名、线上填写信息。
@@ -132,9 +241,9 @@ export function getMaxTokens(scene: AiScene): number {
     case "group_parse":
       return 1400
     case "habit_schedule":
-      return 700
+      return 900
     case "quick_task":
     default:
-      return 500
+      return 800
   }
 }

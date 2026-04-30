@@ -1,5 +1,5 @@
 import { normalizeAiTask } from "@/lib/ai/date"
-import type { AiScene, AiTask } from "@/lib/ai/types"
+import type { AiAgentCommand, AiScene, AiTask } from "@/lib/ai/types"
 import { z } from "zod"
 
 const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -40,6 +40,39 @@ function normalizeIncomingAiTask(value: unknown) {
   return normalizedTask
 }
 
+function normalizeIncomingAgentCommand(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value
+  }
+
+  const normalizedCommand = { ...(value as Record<string, unknown>) }
+
+  if (
+    (typeof normalizedCommand.targetId !== "string" || !normalizedCommand.targetId.trim()) &&
+    typeof normalizedCommand.taskId === "string"
+  ) {
+    normalizedCommand.targetId = normalizedCommand.taskId
+    normalizedCommand.targetType = normalizedCommand.targetType || "task"
+  }
+
+  if (
+    (typeof normalizedCommand.targetId !== "string" || !normalizedCommand.targetId.trim()) &&
+    typeof normalizedCommand.courseId === "string"
+  ) {
+    normalizedCommand.targetId = normalizedCommand.courseId
+    normalizedCommand.targetType = normalizedCommand.targetType || "course"
+  }
+
+  if (
+    (typeof normalizedCommand.message !== "string" || !normalizedCommand.message.trim()) &&
+    typeof normalizedCommand.reply === "string"
+  ) {
+    normalizedCommand.message = normalizedCommand.reply
+  }
+
+  return normalizedCommand
+}
+
 const optionalLooseStringSchema = z.preprocess(
   toOptionalLooseString,
   z.string().optional(),
@@ -65,6 +98,23 @@ const aiTaskShape = {
     z.boolean(),
   ),
 }
+
+const taskContextSchema = z.object({
+  id: z.string().trim().min(1),
+  title: z.string().trim().min(1),
+  date: z.string().trim().min(1),
+  time: z.string().trim().min(1),
+  endTime: z.string().trim().optional(),
+})
+
+const courseContextSchema = z.object({
+  id: z.string().trim().min(1),
+  name: z.string().trim().min(1),
+  dayOfWeek: z.number().int().min(1).max(7),
+  startTime: z.string().trim().min(1),
+  endTime: z.string().trim().min(1),
+  location: z.string().trim().min(1),
+})
 
 function createAiTaskSchema({ requireSourceMessageId }: { requireSourceMessageId: boolean }) {
   return z.preprocess(
@@ -113,13 +163,67 @@ function createAiTaskSchema({ requireSourceMessageId }: { requireSourceMessageId
 export const AiTaskSchema = createAiTaskSchema({ requireSourceMessageId: false })
 export const GroupAiTaskSchema = createAiTaskSchema({ requireSourceMessageId: true })
 
-export const SingleTaskEnvelopeSchema = z.object({
-  task: AiTaskSchema,
-})
-
 export const GroupTaskEnvelopeSchema = z.object({
   tasks: z.array(GroupAiTaskSchema),
 })
+
+export const AgentCommandEnvelopeSchema = z.preprocess(
+  normalizeIncomingAgentCommand,
+  z
+  .object({
+    action: z.enum(["create", "update", "delete", "query", "chat"]),
+    targetType: z.enum(["task", "course"]).optional(),
+    targetId: z.string().trim().min(1).optional(),
+    message: optionalLooseStringSchema,
+    task: AiTaskSchema.optional(),
+  })
+  .superRefine((command, ctx) => {
+    if (command.action === "create" && !command.task) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "create 动作必须提供 task",
+        path: ["task"],
+      })
+    }
+
+    if (command.action === "update") {
+      if (!command.targetId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "update 动作必须提供 targetId",
+          path: ["targetId"],
+        })
+      }
+
+      if (!command.task) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "update 动作必须提供 task",
+          path: ["task"],
+        })
+      }
+    }
+
+    if (command.action === "delete" && !command.targetId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "delete 动作必须提供 targetId",
+        path: ["targetId"],
+      })
+    }
+
+    if (
+      (command.action === "query" || command.action === "chat") &&
+      !command.message?.trim()
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "query/chat 动作必须提供 message",
+        path: ["message"],
+      })
+    }
+  }),
+)
 
 export const ChatRouteRequestSchema = z.object({
   scene: z.enum(["quick_task", "group_parse", "habit_schedule"]),
@@ -135,58 +239,20 @@ export const ChatRouteRequestSchema = z.object({
         }),
       )
       .optional(),
-    tasks: z
-      .array(
-        z.object({
-          title: z.string().trim().min(1),
-          date: z.string().trim().min(1),
-          time: z.string().trim().min(1),
-          endTime: z.string().trim().optional(),
-        }),
-      )
-      .optional(),
-    courses: z
-      .array(
-        z.object({
-          name: z.string().trim().min(1),
-          dayOfWeek: z.number().int().min(1).max(7),
-          startTime: z.string().trim().min(1),
-          endTime: z.string().trim().min(1),
-          location: z.string().trim().min(1),
-        }),
-      )
-      .optional(),
+    tasks: z.array(taskContextSchema).optional(),
+    courses: z.array(courseContextSchema).optional(),
     currentSchedule: z
       .object({
         date: z.string().trim().min(1),
-        tasks: z
-          .array(
-            z.object({
-              title: z.string().trim().min(1),
-              date: z.string().trim().min(1),
-              time: z.string().trim().min(1),
-              endTime: z.string().trim().optional(),
-            }),
-          )
-          .optional(),
-        courses: z
-          .array(
-            z.object({
-              name: z.string().trim().min(1),
-              dayOfWeek: z.number().int().min(1).max(7),
-              startTime: z.string().trim().min(1),
-              endTime: z.string().trim().min(1),
-              location: z.string().trim().min(1),
-            }),
-          )
-          .optional(),
+        tasks: z.array(taskContextSchema).optional(),
+        courses: z.array(courseContextSchema).optional(),
       })
       .optional(),
   }),
 })
 
 export function getEnvelopeSchema(scene: AiScene) {
-  return scene === "group_parse" ? GroupTaskEnvelopeSchema : SingleTaskEnvelopeSchema
+  return scene === "group_parse" ? GroupTaskEnvelopeSchema : AgentCommandEnvelopeSchema
 }
 
 export function normalizeTaskShape(
@@ -219,4 +285,14 @@ export function normalizeTaskShape(
       normalizedTaskType === "deadline" ? false : !normalizedEndTime,
     isExpired: task.isExpired ?? false,
   })
+}
+
+export function normalizeAgentCommand(command: z.infer<typeof AgentCommandEnvelopeSchema>): AiAgentCommand {
+  return {
+    action: command.action,
+    targetType: command.targetType,
+    targetId: command.targetId?.trim() || undefined,
+    message: command.message?.trim() || undefined,
+    task: command.task ? normalizeTaskShape(command.task) : undefined,
+  }
 }

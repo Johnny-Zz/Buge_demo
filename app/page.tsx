@@ -83,7 +83,11 @@ export default function Home() {
         ),
       )
 
-      const parsedTasks = (Array.isArray(response) ? response : [response])
+      if (!Array.isArray(response)) {
+        throw new Error("AI 返回了错误的群聊解析结构")
+      }
+
+      const parsedTasks = response
         .filter(
           (task) =>
             !task.sourceMessageId ||

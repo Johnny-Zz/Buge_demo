@@ -3,9 +3,10 @@ import { buildSystemPrompt, buildUserPrompt, getMaxTokens } from "@/lib/ai/promp
 import {
   ChatRouteRequestSchema,
   getEnvelopeSchema,
+  normalizeAgentCommand,
   normalizeTaskShape,
 } from "@/lib/ai/schemas"
-import type { AiTask, ChatRouteResponse } from "@/lib/ai/types"
+import type { AiAgentCommand, AiTask, ChatRouteResponse } from "@/lib/ai/types"
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
@@ -136,11 +137,11 @@ function buildTemporalContextMessage(nowIso: string, timezone: string) {
 function buildCurrentScheduleMessage(context: {
   currentSchedule?: {
     date: string
-    tasks?: Array<{ title: string; date: string; time: string; endTime?: string }>
-    courses?: Array<{ name: string; dayOfWeek: number; startTime: string; endTime: string; location: string }>
+    tasks?: Array<{ id: string; title: string; date: string; time: string; endTime?: string }>
+    courses?: Array<{ id: string; name: string; dayOfWeek: number; startTime: string; endTime: string; location: string }>
   }
-  tasks?: Array<{ title: string; date: string; time: string; endTime?: string }>
-  courses?: Array<{ name: string; dayOfWeek: number; startTime: string; endTime: string; location: string }>
+  tasks?: Array<{ id: string; title: string; date: string; time: string; endTime?: string }>
+  courses?: Array<{ id: string; name: string; dayOfWeek: number; startTime: string; endTime: string; location: string }>
 }) {
   const currentSchedule = context.currentSchedule
 
@@ -156,7 +157,7 @@ function buildCurrentScheduleMessage(context: {
       ? currentSchedule.tasks
           .map(
             (task) =>
-              `- 任务：${task.title} | ${task.date} ${task.time}-${task.endTime || "未知结束时间"}`,
+              `- 任务ID：${task.id} | ${task.title} | ${task.date} ${task.time}-${task.endTime || "未知结束时间"}`,
           )
           .join("\n")
       : "- 无当天既有任务"
@@ -166,7 +167,7 @@ function buildCurrentScheduleMessage(context: {
       ? currentSchedule.courses
           .map(
             (course) =>
-              `- 课程：${course.name} | ${course.startTime}-${course.endTime} | ${course.location}`,
+              `- 课程ID：${course.id} | ${course.name} | ${course.startTime}-${course.endTime} | ${course.location}`,
           )
           .join("\n")
       : "- 无当天既有课程"
@@ -180,6 +181,75 @@ function buildCurrentScheduleMessage(context: {
     courseLines,
     "context.tasks 与 context.courses 是更完整的全局背景，可用于目标日期切换后的二次校验。",
   ].join("\n")
+}
+
+function buildEntityCatalogMessage(context: {
+  tasks?: Array<{ id: string; title: string; date: string; time: string; endTime?: string }>
+  courses?: Array<{ id: string; name: string; dayOfWeek: number; startTime: string; endTime: string; location: string }>
+}) {
+  const taskLines =
+    context.tasks && context.tasks.length > 0
+      ? context.tasks
+          .map(
+            (task) =>
+              `- task | id=${task.id} | title=${task.title} | date=${task.date} | time=${task.time}-${task.endTime || "未知结束时间"}`,
+          )
+          .join("\n")
+      : "- 无任务"
+
+  const courseLines =
+    context.courses && context.courses.length > 0
+      ? context.courses
+          .map(
+            (course) =>
+              `- course | id=${course.id} | name=${course.name} | weekday=${course.dayOfWeek} | time=${course.startTime}-${course.endTime} | location=${course.location}`,
+          )
+          .join("\n")
+      : "- 无课程"
+
+  return [
+    "当前可操作日程目录：",
+    "tasks:",
+    taskLines,
+    "courses:",
+    courseLines,
+    "如果用户要求删除、修改、取消、推迟、提前、查询某个已有日程，必须优先从这个目录中匹配，并原样返回 targetId。",
+  ].join("\n")
+}
+
+function normalizeTaskLabel(value: string) {
+  return value.trim().toLowerCase().replace(/[\s【】()（）\-_,.;:：，。！？!?"'“”‘’]/g, "")
+}
+
+function dedupeGroupTasks(tasks: AiTask[]) {
+  const taskMap = new Map<string, AiTask>()
+
+  for (const task of tasks) {
+    const dedupeKey = [
+      task.sourceMessageId || "",
+      task.date,
+      task.startTime,
+      task.endTime || "",
+      normalizeTaskLabel(task.taskName),
+      (task.location || "").trim().toLowerCase(),
+    ].join("|")
+
+    if (!taskMap.has(dedupeKey)) {
+      taskMap.set(dedupeKey, task)
+      continue
+    }
+
+    const existingTask = taskMap.get(dedupeKey)
+
+    if (
+      existingTask &&
+      task.taskName.trim().length > existingTask.taskName.trim().length
+    ) {
+      taskMap.set(dedupeKey, task)
+    }
+  }
+
+  return [...taskMap.values()]
 }
 
 export async function POST(request: Request) {
@@ -221,6 +291,10 @@ export async function POST(request: Request) {
   ) {
     messages.push({
       role: "system",
+      content: buildEntityCatalogMessage(routeRequest.context),
+    })
+    messages.push({
+      role: "system",
       content: buildCurrentScheduleMessage(routeRequest.context),
     })
   }
@@ -234,7 +308,7 @@ export async function POST(request: Request) {
   let cleanedResult = ""
 
   try {
-    const data = await createStructuredCompletion<AiTask | AiTask[]>({
+    const data = await createStructuredCompletion<AiAgentCommand | AiTask[]>({
       messages,
       maxTokens: getMaxTokens(routeRequest.scene),
       onRaw: (content) => {
@@ -248,10 +322,10 @@ export async function POST(request: Request) {
         const parsedEnvelope = schema.parse(value)
 
         if ("tasks" in parsedEnvelope) {
-          return parsedEnvelope.tasks.map(normalizeTaskShape)
+          return dedupeGroupTasks(parsedEnvelope.tasks.map(normalizeTaskShape))
         }
 
-        return normalizeTaskShape(parsedEnvelope.task)
+        return normalizeAgentCommand(parsedEnvelope)
       },
     })
 

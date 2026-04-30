@@ -56,7 +56,7 @@ export async function createStructuredCompletion<T>({
   onCleaned,
 }: StructuredCompletionOptions<T>): Promise<T> {
   const client = getDeepSeekClient()
-  const model = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash"
+  const model = "deepseek-chat"
   let lastError: Error | null = null
 
   for (let attempt = 0; attempt < 2; attempt += 1) {

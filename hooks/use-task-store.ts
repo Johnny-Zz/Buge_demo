@@ -254,6 +254,7 @@ interface TaskStore {
   addTask: (task: Task) => void
   addTasks: (tasks: Task[]) => void
   updateTask: (taskId: string, updates: Partial<Task>) => void
+  deleteTask: (taskId: string) => void
   removeTask: (taskId: string) => void
   clearTasks: () => void
   hasTask: (taskId: string) => boolean
@@ -294,6 +295,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tasks: state.tasks.map((t) =>
         t.id === taskId ? { ...t, ...updates } : t
       ),
+    })),
+  deleteTask: (taskId) =>
+    set((state) => ({
+      tasks: state.tasks.filter((t) => t.id !== taskId),
     })),
   removeTask: (taskId) =>
     set((state) => ({

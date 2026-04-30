@@ -4,6 +4,7 @@ import { create } from "zustand"
 
 export const DEFAULT_TASK_DURATION_MINUTES = 60
 export const BUFFER_WARNING_MINUTES = 10
+export type TaskReminder = "30m"
 
 // Helper to convert time string to minutes for comparison
 function timeToMinutes(time: string): number {
@@ -29,6 +30,20 @@ export function hasTimeOverlap(
   const endA = getTaskEndMinutes(rangeA.startTime, rangeA.endTime)
   const startB = timeToMinutes(rangeB.startTime)
   const endB = getTaskEndMinutes(rangeB.startTime, rangeB.endTime)
+  const isInstantA = startA === endA
+  const isInstantB = startB === endB
+
+  if (isInstantA && isInstantB) {
+    return startA === startB
+  }
+
+  if (isInstantA) {
+    return startA >= startB && startA <= endB
+  }
+
+  if (isInstantB) {
+    return startB >= startA && startB <= endA
+  }
 
   return startA < endB && endA > startB
 }
@@ -170,6 +185,7 @@ export interface Task {
   time: string
   endTime?: string
   location?: string
+  reminder?: TaskReminder
   sourceMessageId?: string
   isExpired?: boolean
   priority: "P0" | "P1" | "P2"

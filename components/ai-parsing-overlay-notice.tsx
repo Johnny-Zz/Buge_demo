@@ -1,13 +1,19 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Check, AlertTriangle, Pencil, Save, Inbox, Paperclip, FileImage, ArrowRight } from "lucide-react"
+import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Check, AlertTriangle, Pencil, Save, Inbox, Paperclip, FileImage, ArrowRight, Bell } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { hasTightBuffer, hasTimeOverlap, useTaskStore, Task } from "@/hooks/use-task-store"
+import { checkTaskConflict, hasTightBuffer, hasTimeOverlap, useTaskStore, Task } from "@/hooks/use-task-store"
+import { checkCourseConflict, useCourseStore } from "@/hooks/use-course-store"
+import { toast } from "@/hooks/use-toast"
 
 function timeToMinutes(time: string): number {
   const [hours, minutes] = time.split(":").map(Number)
   return hours * 60 + minutes
+}
+
+function formatTaskTime(task: Task) {
+  return task.endTime ? `${task.date} ${task.time}-${task.endTime}` : `${task.date} ${task.time}`
 }
 
 interface AiParsingOverlayNoticeProps {
@@ -173,6 +179,7 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
   const [editingId, setEditingId] = useState<string | null>(null)
   const [localTasks, setLocalTasks] = useState<Task[]>(tasks)
   const { addTask, addToInbox, removeFromInbox, removeTask, tasks: storeTasks, inboxTasks, markMessageAsProcessed } = useTaskStore()
+  const { courses } = useCourseStore()
 
   useEffect(() => {
     if (isOpen) {
@@ -208,6 +215,18 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
     if (task.isExpired) {
       return
     }
+
+    const hardConflictMessage = getHardConflictMessage(task, storeTasks)
+
+    if (hardConflictMessage) {
+      toast({
+        title: "时空冲突：检测到任务时间重叠！",
+        description: hardConflictMessage,
+        variant: "destructive",
+      })
+      return
+    }
+
     addTask(task)
     if (task.sourceMessageId) {
       markMessageAsProcessed(task.sourceMessageId)
@@ -232,18 +251,40 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
 
   const handleAddAllNew = () => {
     const tasksToAdd = localTasks.filter((task) => !task.isExpired && !isTaskInStore(task))
+    const plannedTasks = [...storeTasks]
+    const addedDates: string[] = []
+    const conflictMessages: string[] = []
 
-    tasksToAdd.forEach(task => {
-      if (!task.isExpired && !isTaskInStore(task)) {
-        addTask(task)
-        if (task.sourceMessageId) {
-          markMessageAsProcessed(task.sourceMessageId)
-        }
+    tasksToAdd.forEach((task) => {
+      const hardConflictMessage = getHardConflictMessage(task, plannedTasks)
+
+      if (hardConflictMessage) {
+        conflictMessages.push(hardConflictMessage)
+        return
+      }
+
+      addTask(task)
+      plannedTasks.push(task)
+      addedDates.push(task.date)
+
+      if (task.sourceMessageId) {
+        markMessageAsProcessed(task.sourceMessageId)
       }
     })
 
-    const targetDate = tasksToAdd[0]?.date ?? localTasks.find((task) => !task.isExpired)?.date
-    onSaveToTimeline(targetDate)
+    if (conflictMessages.length > 0) {
+      toast({
+        title: "时空冲突：检测到任务时间重叠！",
+        description: conflictMessages[0],
+        variant: "destructive",
+      })
+    }
+
+    if (addedDates.length === 0) {
+      return
+    }
+
+    onSaveToTimeline(addedDates[0] ?? localTasks.find((task) => !task.isExpired)?.date)
   }
 
   const handleStartEdit = (taskId: string) => {
@@ -265,6 +306,34 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
   
   const isTaskInInbox = (task: Task) => {
     return inboxTasks.some(t => t.title === task.title)
+  }
+
+  const getHardConflictMessage = (task: Task, existingTasks: Task[]) => {
+    const taskConflict = checkTaskConflict(
+      { date: task.date, time: task.time, endTime: task.endTime },
+      existingTasks,
+    )
+
+    if (taskConflict) {
+      return `时间冲突：与【${taskConflict.title}】(${taskConflict.time}-${taskConflict.endTime || taskConflict.time}) 重叠`
+    }
+
+    const [month, day] = task.date.split("-").map(Number)
+    const year = new Date().getFullYear()
+    const taskDate = new Date(year, month - 1, day)
+    const jsDay = taskDate.getDay()
+    const dayOfWeek = jsDay === 0 ? 7 : jsDay
+    const coursesOnDay = courses.filter((course) => course.dayOfWeek === dayOfWeek)
+    const courseConflict = checkCourseConflict(
+      { startTime: task.time, endTime: task.endTime || task.time, dayOfWeek },
+      coursesOnDay,
+    )
+
+    if (courseConflict) {
+      return `时间冲突：与课程【${courseConflict.name}】(${courseConflict.startTime}-${courseConflict.endTime}) 重叠`
+    }
+
+    return null
   }
 
   const handleAddToInbox = (task: Task) => {
@@ -445,6 +514,9 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
                       )}>
                         {task.title}
                       </span>
+                      {task.reminder === "30m" && (
+                        <Bell className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
+                      )}
                       {isExpired ? (
                         <span className="ml-2 flex-shrink-0 rounded bg-red-100 px-1 py-0.5 text-xs text-red-500">
                           [已过期]
@@ -466,7 +538,7 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
                       "text-xs mt-0.5",
                       isExpired ? "text-gray-600" : "text-gray-500",
                     )}>
-                      {task.date} {task.time}
+                      {formatTaskTime(task)}
                     </p>
                   </div>
 
@@ -559,8 +631,16 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
                           <div className="flex items-center gap-2">
                             <Clock className="w-3.5 h-3.5 text-amber-400" />
                             <span className="text-xs text-gray-400">时间：</span>
-                            <span className="text-xs text-white">{task.date} {task.time}</span>
+                            <span className="text-xs text-white">{formatTaskTime(task)}</span>
                           </div>
+
+                          {task.reminder === "30m" && (
+                            <div className="flex items-center gap-2">
+                              <Bell className="w-3.5 h-3.5 text-amber-400" />
+                              <span className="text-xs text-gray-400">提醒：</span>
+                              <span className="text-xs text-amber-300">提前30分钟提醒</span>
+                            </div>
+                          )}
 
                           {/* Location Detail */}
                           {task.location && (

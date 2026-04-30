@@ -1,3 +1,4 @@
+import { normalizeAiTask } from "@/lib/ai/date"
 import type { AiScene, AiTask } from "@/lib/ai/types"
 import { z } from "zod"
 
@@ -143,22 +144,19 @@ export function normalizeTaskShape(
     typeof task.location === "string" ? task.location.trim() : ""
   const normalizedSourceMessageId =
     typeof task.sourceMessageId === "string" ? task.sourceMessageId.trim() : ""
-  const effectiveStartTime = normalizedStartTime || normalizedEndTime
-  const effectiveEndTime =
-    normalizedTaskType === "deadline"
-      ? normalizedEndTime || effectiveStartTime
-      : normalizedEndTime || undefined
-
-  return {
+  return normalizeAiTask({
     taskName: task.taskName.trim(),
     date: task.date.trim(),
-    startTime: effectiveStartTime,
-    endTime: effectiveEndTime,
+    startTime: normalizedStartTime || normalizedEndTime,
+    endTime:
+      normalizedTaskType === "deadline"
+        ? normalizedEndTime || normalizedStartTime
+        : normalizedEndTime || undefined,
     location: normalizedLocation,
     taskType: normalizedTaskType,
     sourceMessageId: normalizedSourceMessageId || undefined,
     endTimeInferred:
       normalizedTaskType === "deadline" ? false : !normalizedEndTime,
     isExpired: task.isExpired ?? false,
-  }
+  })
 }

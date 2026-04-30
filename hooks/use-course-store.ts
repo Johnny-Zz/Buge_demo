@@ -17,6 +17,32 @@ function timeToMinutes(time: string): number {
   return hours * 60 + minutes
 }
 
+function hasCourseTimeOverlap(
+  rangeA: { startTime: string; endTime: string },
+  rangeB: { startTime: string; endTime: string },
+): boolean {
+  const startA = timeToMinutes(rangeA.startTime)
+  const endA = timeToMinutes(rangeA.endTime)
+  const startB = timeToMinutes(rangeB.startTime)
+  const endB = timeToMinutes(rangeB.endTime)
+  const isInstantA = startA === endA
+  const isInstantB = startB === endB
+
+  if (isInstantA && isInstantB) {
+    return startA === startB
+  }
+
+  if (isInstantA) {
+    return startA >= startB && startA <= endB
+  }
+
+  if (isInstantB) {
+    return startB >= startA && startB <= endA
+  }
+
+  return startA < endB && endA > startB
+}
+
 // Sort courses by start time
 function sortCoursesByTime(courses: Course[]): Course[] {
   return [...courses].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
@@ -24,19 +50,18 @@ function sortCoursesByTime(courses: Course[]): Course[] {
 
 // Check if two courses have overlapping time blocks
 export function checkCourseConflict(newCourse: { startTime: string; endTime: string; dayOfWeek?: number }, existingCourses: Course[], excludeId?: string): Course | null {
-  const newStart = timeToMinutes(newCourse.startTime)
-  const newEnd = timeToMinutes(newCourse.endTime)
   const dayOfWeek = newCourse.dayOfWeek ?? 1
   
   for (const course of existingCourses) {
     if (excludeId && course.id === excludeId) continue
     if (course.dayOfWeek !== dayOfWeek) continue
-    
-    const existingStart = timeToMinutes(course.startTime)
-    const existingEnd = timeToMinutes(course.endTime)
-    
-    // Check for overlap: new starts before existing ends AND new ends after existing starts
-    if (newStart < existingEnd && newEnd > existingStart) {
+
+    if (
+      hasCourseTimeOverlap(
+        { startTime: newCourse.startTime, endTime: newCourse.endTime },
+        { startTime: course.startTime, endTime: course.endTime },
+      )
+    ) {
       return course // Return the conflicting course
     }
   }

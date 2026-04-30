@@ -1,5 +1,6 @@
 export type AiScene = "quick_task" | "group_parse" | "habit_schedule"
 export type AiTaskType = "event" | "deadline"
+export type AiReminder = "30m"
 
 export interface AiTask {
   taskName: string
@@ -8,6 +9,7 @@ export interface AiTask {
   endTime?: string
   location?: string
   taskType?: AiTaskType
+  reminder?: AiReminder
   sourceMessageId?: string
   endTimeInferred?: boolean
   isExpired?: boolean

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { ArrowLeft, Menu, Mic, Smile, Plus, Check, MapPin, Sparkles, Lightbulb, X, Send, Trash2, Edit3, ChevronDown, Pencil, StickyNote, Calendar, School, Loader2, Download, Settings, Inbox, ArrowRight, Clock, MessageSquare, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react"
+import { ArrowLeft, Menu, Mic, Smile, Plus, Check, MapPin, Sparkles, Lightbulb, X, Send, Trash2, Edit3, ChevronDown, Pencil, StickyNote, Calendar, School, Loader2, Download, Settings, Inbox, ArrowRight, Clock, MessageSquare, CalendarDays, ChevronLeft, ChevronRight, Bell } from "lucide-react"
 import { aiTaskToStoreTask, buildAiContext, callBugeAi, createChatRouteRequest } from "@/lib/ai/client"
 import { addMinutesToTime } from "@/lib/ai/date"
 import type { AiTask } from "@/lib/ai/types"
@@ -346,6 +346,7 @@ interface PendingConfirmation {
     endTime: string
     location: string
     insight: string
+    reminder?: Task["reminder"]
   }
 }
 
@@ -374,7 +375,16 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
   const [showBufferWarning, setShowBufferWarning] = useState(false)
   const [pendingBufferTask, setPendingBufferTask] = useState<{
     type: 'manual' | 'edit' | 'parse'
-    taskData: { name: string; date: string; startTime: string; endTime: string; location: string; insight?: string }
+    taskData: {
+      name: string
+      date: string
+      startTime: string
+      endTime: string
+      location: string
+      insight?: string
+      reminder?: Task["reminder"]
+      sourceMessageId?: string
+    }
     taskId?: string // For edit mode
   } | null>(null)
   
@@ -509,6 +519,8 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
           endTime: resolveEndTime(task.time, task.endTime),
           location: task.location || "",
           insight,
+          reminder: task.reminder,
+          sourceMessageId: task.sourceMessageId,
         },
       })
       setShowBufferWarning(true)
@@ -523,6 +535,7 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
         endTime: task.endTime,
         location: task.location,
         insight,
+        reminder: task.reminder,
       })
       return
     }
@@ -560,6 +573,7 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
           endTime: resolveEndTime(storeTask.time, storeTask.endTime),
           location: storeTask.location || "",
           insight,
+          reminder: storeTask.reminder,
         },
       })
       return
@@ -680,6 +694,7 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
         endTime: pendingConfirmation.newData.endTime,
         location: pendingConfirmation.newData.location || undefined,
         priority: "P1",
+        reminder: pendingConfirmation.newData.reminder,
       },
       pendingConfirmation.newData.insight,
       pendingConfirmation.existingTaskId,
@@ -1973,6 +1988,7 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
                           ),
                           location: pendingBufferTask.taskData.location || undefined,
                           insight: pendingBufferTask.taskData.insight,
+                          reminder: pendingBufferTask.taskData.reminder,
                         })
                       } else {
                         addTask({
@@ -1987,6 +2003,8 @@ className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in"
                           location: pendingBufferTask.taskData.location || undefined,
                           priority: "P1",
                           insight: pendingBufferTask.taskData.insight,
+                          reminder: pendingBufferTask.taskData.reminder,
+                          sourceMessageId: pendingBufferTask.taskData.sourceMessageId,
                         })
                       }
                     } else if (pendingBufferTask.type === 'edit' && pendingBufferTask.taskId) {
@@ -2362,6 +2380,9 @@ function CalendarView({
                               <div className="flex min-w-0 items-center gap-2">
                                 <Check className="h-3.5 w-3.5 flex-shrink-0 text-sky-400" />
                                 <p className="truncate text-xs font-medium text-white">{task.title}</p>
+                                {task.reminder === "30m" && (
+                                  <Bell className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
+                                )}
                               </div>
                               <p className="flex-shrink-0 font-mono text-[10px] text-sky-300">
                                 {formatTimeRange(task.time, task.endTime)}
@@ -3202,6 +3223,9 @@ function TaskCard({
             showWarning ? "bg-red-500 animate-pulse" : "bg-sky-400"
           )} />
           <p className="truncate text-sm font-medium text-white">{task.title}</p>
+          {task.reminder === "30m" && (
+            <Bell className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
+          )}
           {hasNotes && (
             <StickyNote className="h-3.5 w-3.5 flex-shrink-0 text-gray-500" />
           )}
@@ -3341,6 +3365,13 @@ function TaskCard({
                   <div className="flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-gray-500" />
                     <p className="text-gray-400 text-sm">{task.location}</p>
+                  </div>
+                )}
+
+                {task.reminder === "30m" && (
+                  <div className="flex items-center gap-1.5">
+                    <Bell className="w-3.5 h-3.5 text-amber-400" />
+                    <p className="text-amber-300 text-sm">提前30分钟提醒</p>
                   </div>
                 )}
 

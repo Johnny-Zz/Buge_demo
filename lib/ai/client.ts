@@ -150,6 +150,7 @@ export function aiTaskToStoreTask(task: AiTask, idPrefix = "ai"): Task {
     endTime: normalized.endTime,
     location: normalized.location || undefined,
     priority: "P1",
+    reminder: normalized.reminder,
     isExpired: normalized.isExpired ?? false,
     sourceMessageId: normalized.sourceMessageId,
   }

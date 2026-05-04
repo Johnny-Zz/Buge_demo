@@ -53,6 +53,15 @@ function buildSchedulingRules() {
     "你会收到 context.currentSchedule、context.tasks、context.courses 作为排程上下文。",
     "当用户未明确指定日期时，必须优先安排在系统当前时间当天的可用时段。只有当今天剩余的连续空白时段已经绝对无法容纳该任务时，才允许顺延到明天。",
     "你必须先分析 context.currentSchedule，找到当天的连续空白时段，再决定具体时间。",
+    "你必须正确理解宽泛时间域，并把它们当成可滑动的时间窗口，而不是单一时刻。",
+    "时间域参考：上午通常指 06:00-12:00，下午通常指 12:00-18:00，晚上/晚间通常指 18:00-23:00，凌晨通常指 00:00-06:00；如果 context.habits 给出了更具体的习惯时段，优先使用习惯时段作为窗口中心。",
+    "最高优先级：针对命中习惯的模糊指令，必须使用滑动窗口寻优算法。",
+    "当用户指令命中某个习惯，例如晚间健身、夜间自习、早起背单词，但该习惯的常规时间段与 context.currentSchedule 中的课程或任务发生占用时，绝对不要把新任务直接叠加在已有日程上。",
+    "你必须把用户的宏观期望时段当作一个连续窗口，在这个窗口内以前后冲突区间为锚点，向前或向后滑动，寻找离原习惯时间最近的可用连续空白时段。",
+    "同频段滑动时，优先保留用户的语义偏好。例如“晚间健身”应优先留在 18:00-23:00 内解决，而不是轻易跳到清晨或中午。",
+    "如果默认习惯时段被占用，例如今晚 19:00-21:30 有课，而习惯是晚间运动 1 小时，那么你必须自动避开该区间，把任务滑动到课前例如 17:30-18:30，或课后例如 21:40-22:40，并确保至少留出 10 分钟缓冲。",
+    "如果一个候选空档虽然位于正确时间域，但长度放不下任务时长，或与前后日程缓冲不足 10 分钟，这个空档绝对不可用，必须继续寻找下一个可用空档。",
+    "如果整个首选时间域都放不下，再考虑相邻时间域或次日同语义时段；不要在首选窗口仍有可用空间时随意跳到别的日期。",
     "最高优先级：带时长的 DDL 任务必须使用严格倒推排程算法。",
     "当用户提供了截止时间（deadline），且原文明确给出任务时长，或你能从原文中可靠识别出明确时长（例如“花30分钟提交 / 需要1小时完成 / 半小时内处理完”）时，必须先锁定这段时长，再排时间。",
     "严禁压缩时长：你输出的 endTime - startTime 必须绝对等于该任务所需时长，绝不能为了塞进缝隙把 30 分钟压成 10 分钟，或把 1 小时压成 20 分钟。",
@@ -188,7 +197,26 @@ Few-shot 示例 2：
     ],
   },
 })}
-输出：{"action":"update","targetType":"course","targetId":"course_1","message":"已把算法课整体顺延半小时。","task":{"taskName":"算法课","date":"2026-04-30","taskType":"event","startTime":"08:30","endTime":"10:10","location":"主楼412","isExpired":false}}`
+输出：{"action":"update","targetType":"course","targetId":"course_1","message":"已把算法课整体顺延半小时。","task":{"taskName":"算法课","date":"2026-04-30","taskType":"event","startTime":"08:30","endTime":"10:10","location":"主楼412","isExpired":false}}
+
+Few-shot 示例 3：
+输入：${JSON.stringify({
+  scene: "habit_schedule",
+  input: "我要健身",
+  context: {
+    nowIso: "2026-04-29T17:20:00+08:00",
+    timezone: "Asia/Shanghai",
+    habits: [{ id: "habit_2", content: "21:00-22:00 晚间运动" }],
+    currentSchedule: {
+      date: "2026-04-29",
+      tasks: [],
+      courses: [
+        { id: "course_2", name: "公共政治课", dayOfWeek: 3, startTime: "19:00", endTime: "21:30", location: "主楼413" },
+      ],
+    },
+  },
+})}
+输出：{"action":"create","message":"已避开晚间课程并顺延到最近的可用时段。","task":{"taskName":"健身","date":"2026-04-29","taskType":"event","startTime":"21:40","endTime":"22:40","location":"","isExpired":false}}`
   }
 
   return `${buildSharedRules(scene)}

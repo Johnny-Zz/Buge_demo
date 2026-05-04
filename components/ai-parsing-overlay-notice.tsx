@@ -222,7 +222,6 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
         description: warningState.conflictMessage || "该时间段已存在其他日程。",
         variant: "destructive",
       })
-      return
     }
 
     if (warningState.isExpired) {
@@ -256,7 +255,7 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
   const handleAddAllNew = () => {
     const tasksToAdd = localTasks.filter((task) => {
       const warningState = warningStateById.get(task.id)
-      return !warningState?.isExpired && !warningState?.hasConflict && !isTaskInStore(task)
+      return !warningState?.isExpired && !isTaskInStore(task)
     })
     const plannedTasks = [...storeTasks]
     const addedDates: string[] = []
@@ -267,7 +266,6 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
 
       if (hardConflictMessage) {
         conflictMessages.push(hardConflictMessage)
-        return
       }
 
       addTask(task)
@@ -400,7 +398,7 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
   )
   const addableTasks = localTasks.filter((task) => {
     const warningState = warningStateById.get(task.id)
-    return !warningState?.isExpired && !warningState?.hasConflict && !isTaskInStore(task)
+    return !warningState?.isExpired && !isTaskInStore(task)
   })
   const newTasksCount = addableTasks.length
   const scheduleAlertLevel: "overlap" | "buffer" | null = localTasks.some(
@@ -500,7 +498,6 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
             const isExpired = Boolean(warningState?.isExpired)
             const hasConflict = Boolean(warningState?.hasConflict)
             const isTight = Boolean(warningState?.isTight)
-            const isScheduleLocked = isExpired || hasConflict
 
             return (
               <div 
@@ -616,10 +613,10 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
                         {/* Add to Schedule Button */}
                         <button
                           onClick={() => handleAddSingle(task)}
-                          disabled={isScheduleLocked}
+                          disabled={isExpired}
                           className={cn(
                             "flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors",
-                            isScheduleLocked
+                            isExpired
                               ? "cursor-not-allowed border border-gray-300 bg-gray-300 text-gray-500"
                               : "bg-[#0099FF]/15 hover:bg-[#0099FF]/25 border border-[#0099FF]/40 text-[#0099FF]"
                           )}

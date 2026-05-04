@@ -3,14 +3,9 @@
 import { useEffect, useState } from "react"
 import { X, Sparkles, CheckCircle2, ChevronDown, Clock, MapPin, Flame, Check, AlertTriangle, Pencil, Save, Inbox, Paperclip, FileImage, ArrowRight, Bell } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { checkTaskConflict, hasTightBuffer, hasTimeOverlap, isSameTaskIdentity, useTaskStore, Task } from "@/hooks/use-task-store"
-import { checkCourseConflict, useCourseStore } from "@/hooks/use-course-store"
+import { checkTaskBufferWarning, checkTaskConflict, hasTightBuffer, hasTimeOverlap, isSameTaskIdentity, useTaskStore, Task } from "@/hooks/use-task-store"
+import { checkCourseBufferWarning, checkCourseConflict, useCourseStore } from "@/hooks/use-course-store"
 import { toast } from "@/hooks/use-toast"
-
-function timeToMinutes(time: string): number {
-  const [hours, minutes] = time.split(":").map(Number)
-  return hours * 60 + minutes
-}
 
 function formatTaskTime(task: Task) {
   return task.endTime ? `${task.date} ${task.time}-${task.endTime}` : `${task.date} ${task.time}`
@@ -21,6 +16,13 @@ interface AiParsingOverlayNoticeProps {
   onClose: () => void
   onSaveToTimeline: (targetDate?: string) => void
   tasks: Task[]
+}
+
+interface TaskWarningState {
+  isExpired: boolean
+  hasConflict: boolean
+  isTight: boolean
+  conflictMessage: string | null
 }
 
 // Comprehensive Inline Edit Form Component
@@ -212,18 +214,18 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
   }
 
   const handleAddSingle = (task: Task) => {
-    if (task.isExpired) {
+    const warningState = getTaskWarningState(task)
+
+    if (warningState.hasConflict) {
+      toast({
+        title: "时空冲突：检测到任务时间重叠！",
+        description: warningState.conflictMessage || "该时间段已存在其他日程。",
+        variant: "destructive",
+      })
       return
     }
 
-    const hardConflictMessage = getHardConflictMessage(task, storeTasks)
-
-    if (hardConflictMessage) {
-      toast({
-        title: "时空冲突：检测到任务时间重叠！",
-        description: hardConflictMessage,
-        variant: "destructive",
-      })
+    if (warningState.isExpired) {
       return
     }
 
@@ -252,7 +254,10 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
   }
 
   const handleAddAllNew = () => {
-    const tasksToAdd = localTasks.filter((task) => !task.isExpired && !isTaskInStore(task))
+    const tasksToAdd = localTasks.filter((task) => {
+      const warningState = warningStateById.get(task.id)
+      return !warningState?.isExpired && !warningState?.hasConflict && !isTaskInStore(task)
+    })
     const plannedTasks = [...storeTasks]
     const addedDates: string[] = []
     const conflictMessages: string[] = []
@@ -286,7 +291,7 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
       return
     }
 
-    onSaveToTimeline(addedDates[0] ?? localTasks.find((task) => !task.isExpired)?.date)
+    onSaveToTimeline(addedDates[0] ?? localTasks[0]?.date)
   }
 
   const handleStartEdit = (taskId: string) => {
@@ -305,9 +310,17 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
   const isTaskInStore = (task: Task) => {
     return storeTasks.some((currentTask) => isSameTaskIdentity(currentTask, task))
   }
-  
+
   const isTaskInInbox = (task: Task) => {
     return inboxTasks.some((currentTask) => isSameTaskIdentity(currentTask, task))
+  }
+
+  const getTaskDayOfWeek = (task: Task) => {
+    const [month, day] = task.date.split("-").map(Number)
+    const year = new Date().getFullYear()
+    const taskDate = new Date(year, month - 1, day)
+    const jsDay = taskDate.getDay()
+    return jsDay === 0 ? 7 : jsDay
   }
 
   const getHardConflictMessage = (task: Task, existingTasks: Task[]) => {
@@ -320,11 +333,7 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
       return `时间冲突：与【${taskConflict.title}】(${taskConflict.time}-${taskConflict.endTime || taskConflict.time}) 重叠`
     }
 
-    const [month, day] = task.date.split("-").map(Number)
-    const year = new Date().getFullYear()
-    const taskDate = new Date(year, month - 1, day)
-    const jsDay = taskDate.getDay()
-    const dayOfWeek = jsDay === 0 ? 7 : jsDay
+    const dayOfWeek = getTaskDayOfWeek(task)
     const coursesOnDay = courses.filter((course) => course.dayOfWeek === dayOfWeek)
     const courseConflict = checkCourseConflict(
       { startTime: task.time, endTime: task.endTime || task.time, dayOfWeek },
@@ -338,60 +347,69 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
     return null
   }
 
+  const getTaskWarningState = (task: Task): TaskWarningState => {
+    const isExpired = Boolean(task.isExpired)
+    const scheduleConflictMessage = getHardConflictMessage(task, storeTasks)
+    const parsedConflictTask = localTasks.find((otherTask) =>
+      otherTask.id !== task.id &&
+      otherTask.date === task.date &&
+      hasTimeOverlap(
+        { startTime: task.time, endTime: task.endTime },
+        { startTime: otherTask.time, endTime: otherTask.endTime },
+      ),
+    )
+    const parsedConflictMessage = parsedConflictTask
+      ? `时间冲突：与待确认任务【${parsedConflictTask.title}】(${parsedConflictTask.time}-${parsedConflictTask.endTime || parsedConflictTask.time}) 重叠`
+      : null
+    const conflictMessage = scheduleConflictMessage || parsedConflictMessage
+    const hasConflict = Boolean(conflictMessage)
+
+    const dayOfWeek = getTaskDayOfWeek(task)
+    const coursesOnDay = courses.filter((course) => course.dayOfWeek === dayOfWeek)
+    const taskBufferWarning = checkTaskBufferWarning(
+      { date: task.date, time: task.time, endTime: task.endTime },
+      storeTasks,
+    )
+    const courseBufferWarning = checkCourseBufferWarning(
+      { startTime: task.time, endTime: task.endTime || task.time, dayOfWeek },
+      coursesOnDay,
+    )
+    const parsedTightTask = localTasks.find((otherTask) =>
+      otherTask.id !== task.id &&
+      otherTask.date === task.date &&
+      hasTightBuffer(
+        { startTime: task.time, endTime: task.endTime },
+        { startTime: otherTask.time, endTime: otherTask.endTime },
+      ),
+    )
+
+    return {
+      isExpired,
+      hasConflict,
+      isTight: !hasConflict && Boolean(taskBufferWarning || courseBufferWarning || parsedTightTask),
+      conflictMessage,
+    }
+  }
+
   const handleAddToInbox = (task: Task) => {
     addToInbox(task)
   }
 
-  // Count how many tasks are not yet added
-  const newTasksCount = localTasks.filter(
-    (task) => !task.isExpired && !isTaskInStore(task),
-  ).length
-  const sortedTasks = [...localTasks]
-    .filter((task) => !task.isExpired)
-    .sort((a, b) => {
-    const dateComparison = a.date.localeCompare(b.date)
-    if (dateComparison !== 0) {
-      return dateComparison
-    }
-
-    return timeToMinutes(a.time) - timeToMinutes(b.time)
+  const warningStateById = new Map(
+    localTasks.map((task) => [task.id, getTaskWarningState(task)]),
+  )
+  const addableTasks = localTasks.filter((task) => {
+    const warningState = warningStateById.get(task.id)
+    return !warningState?.isExpired && !warningState?.hasConflict && !isTaskInStore(task)
   })
-  let scheduleAlertLevel: "overlap" | "buffer" | null = null
-  for (let index = 0; index < sortedTasks.length; index++) {
-    const currentTask = sortedTasks[index]
-
-    for (let nextIndex = index + 1; nextIndex < sortedTasks.length; nextIndex++) {
-      const nextTask = sortedTasks[nextIndex]
-
-      if (currentTask.date !== nextTask.date) {
-        break
-      }
-
-      if (
-        hasTimeOverlap(
-          { startTime: currentTask.time, endTime: currentTask.endTime },
-          { startTime: nextTask.time, endTime: nextTask.endTime },
-        )
-      ) {
-        scheduleAlertLevel = "overlap"
-        break
-      }
-
-      if (
-        scheduleAlertLevel !== "overlap" &&
-        hasTightBuffer(
-          { startTime: currentTask.time, endTime: currentTask.endTime },
-          { startTime: nextTask.time, endTime: nextTask.endTime },
-        )
-      ) {
-        scheduleAlertLevel = "buffer"
-      }
-    }
-
-    if (scheduleAlertLevel === "overlap") {
-      break
-    }
-  }
+  const newTasksCount = addableTasks.length
+  const scheduleAlertLevel: "overlap" | "buffer" | null = localTasks.some(
+    (task) => warningStateById.get(task.id)?.hasConflict,
+  )
+    ? "overlap"
+    : localTasks.some((task) => warningStateById.get(task.id)?.isTight)
+    ? "buffer"
+    : null
 
   if (!isVisible) return null
 
@@ -478,15 +496,23 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
             const isExpanded = expandedIds.has(task.id)
             const alreadyAdded = isTaskInStore(task)
             const isEditing = editingId === task.id
-            const isExpired = Boolean(task.isExpired)
+            const warningState = warningStateById.get(task.id)
+            const isExpired = Boolean(warningState?.isExpired)
+            const hasConflict = Boolean(warningState?.hasConflict)
+            const isTight = Boolean(warningState?.isTight)
+            const isScheduleLocked = isExpired || hasConflict
 
             return (
               <div 
                 key={task.id}
                 className={cn(
                   "bg-[#2a2a2a]/80 backdrop-blur-sm rounded-xl border transition-all duration-200",
-                  isExpired
+                  hasConflict
+                    ? "border-red-500/40 bg-zinc-900/80"
+                    : isExpired
                     ? "border-white/10 bg-zinc-900/70"
+                    : isTight
+                    ? "border-orange-500/30 bg-orange-500/5"
                     : alreadyAdded
                     ? "border-emerald-500/30"
                     : "border-white/5"
@@ -519,11 +545,17 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
                       {task.reminder === "30m" && (
                         <Bell className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
                       )}
-                      {isExpired ? (
+                      {isExpired && (
                         <span className="ml-2 flex-shrink-0 rounded bg-red-100 px-1 py-0.5 text-xs text-red-500">
                           [已过期]
                         </span>
-                      ) : (
+                      )}
+                      {hasConflict && (
+                        <span className="flex-shrink-0 rounded bg-red-100 px-1 py-0.5 text-xs text-red-500">
+                          [时间冲突]
+                        </span>
+                      )}
+                      {!isExpired && !hasConflict && (
                         <span className={cn(
                           "flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold",
                           task.priority === "P0" 
@@ -584,10 +616,10 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
                         {/* Add to Schedule Button */}
                         <button
                           onClick={() => handleAddSingle(task)}
-                          disabled={isExpired}
+                          disabled={isScheduleLocked}
                           className={cn(
                             "flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors",
-                            isExpired
+                            isScheduleLocked
                               ? "cursor-not-allowed border border-gray-300 bg-gray-300 text-gray-500"
                               : "bg-[#0099FF]/15 hover:bg-[#0099FF]/25 border border-[#0099FF]/40 text-[#0099FF]"
                           )}
@@ -656,9 +688,17 @@ export function AiParsingOverlayNotice({ isOpen, onClose, onSaveToTimeline, task
                           {/* Priority Detail */}
                           <div className="flex items-center gap-2">
                             <Flame className="w-3.5 h-3.5 text-orange-400" />
-                            <span className="text-xs text-gray-400">{isExpired ? "状态：" : "优先级："}</span>
-                            {isExpired ? (
-                              <span className="text-xs font-medium text-red-400">已过期</span>
+                            <span className="text-xs text-gray-400">{isExpired || hasConflict || isTight ? "状态：" : "优先级："}</span>
+                            {isExpired || hasConflict || isTight ? (
+                              <span className="text-xs font-medium text-red-400">
+                                {[
+                                  isExpired ? "已过期" : null,
+                                  hasConflict ? "时间冲突" : null,
+                                  !hasConflict && isTight ? "转场过紧" : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" / ")}
+                              </span>
                             ) : (
                               <span className={cn(
                                 "text-xs font-medium",

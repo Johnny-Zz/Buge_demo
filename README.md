@@ -37,6 +37,10 @@
 - **状态管理**：Zustand (单点真实数据源，实现全域视图数据的实时联动与双向绑定)
 - **原型生成**：基于 v0.dev AI 辅助构建
 
+## 📄 产品文档
+
+- [不鸽 Buge Demo PRD / 产品功能架构](docs/buge-product-function-architecture.md)
+
 ## 👨‍💻 快速本地运行
 
 如果你希望在本地检视前端代码，请执行以下命令：

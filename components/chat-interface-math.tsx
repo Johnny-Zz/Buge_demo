@@ -3,6 +3,7 @@
 import { ArrowLeft, Menu, Mic, Smile, Plus } from "lucide-react"
 import { getRelativeGroupDates, MATH_MESSAGE_IDS } from "@/lib/group-parse-inputs"
 import { useTaskStore } from "@/hooks/use-task-store"
+import { handleMockClick } from "@/lib/demo-feedback"
 import { cn } from "@/lib/utils"
 import { StatusBar } from "./status-bar"
 import { SummonAgentButton } from "./summon-agent-button"
@@ -39,7 +40,10 @@ export function ChatInterfaceMath({ onSummonAgent, onBack, isParsing = false }: 
           </h1>
           <span className="text-gray-500 text-xs ml-1">🎓</span>
         </div>
-        <button className="p-2 -mr-2 text-white hover:text-gray-300 transition-colors">
+        <button
+          onClick={handleMockClick}
+          className="cursor-default p-2 -mr-2 text-white opacity-70"
+        >
           <Menu className="w-6 h-6" />
         </button>
       </div>
@@ -153,21 +157,31 @@ export function ChatInterfaceMath({ onSummonAgent, onBack, isParsing = false }: 
 
       {/* Input Area */}
       <div className="flex items-center gap-2 px-3 py-2 bg-[#111111] border-t border-[#2a2a2a]">
-        <button className="p-2 text-gray-400">
+        <button
+          onClick={handleMockClick}
+          className="cursor-default p-2 text-gray-400 opacity-70"
+        >
           <Mic className="w-6 h-6" />
         </button>
         <div className="flex-1 bg-[#2a2a2a] rounded-full px-4 py-2">
           <input 
             type="text" 
             placeholder="" 
-            className="w-full bg-transparent text-white text-sm outline-none"
+            onClick={handleMockClick}
+            className="w-full cursor-default bg-transparent text-sm text-white outline-none"
             readOnly
           />
         </div>
-        <button className="p-2 text-gray-400">
+        <button
+          onClick={handleMockClick}
+          className="cursor-default p-2 text-gray-400 opacity-70"
+        >
           <Smile className="w-6 h-6" />
         </button>
-        <button className="p-2 text-gray-400">
+        <button
+          onClick={handleMockClick}
+          className="cursor-default p-2 text-gray-400 opacity-70"
+        >
           <Plus className="w-6 h-6" />
         </button>
       </div>

@@ -3,6 +3,7 @@
 import { ArrowLeft, Menu, Mic, Smile, Plus } from "lucide-react"
 import { getRelativeGroupDates, NOTICE_MESSAGE_IDS } from "@/lib/group-parse-inputs"
 import { useTaskStore } from "@/hooks/use-task-store"
+import { handleMockClick } from "@/lib/demo-feedback"
 import { cn } from "@/lib/utils"
 import { StatusBar } from "./status-bar"
 import { SummonAgentButton } from "./summon-agent-button"
@@ -42,7 +43,10 @@ export function ChatInterfaceNotice({ onSummonAgent, onBack, isParsing = false }
             XX大学网安专业通知群(56)
           </h1>
         </div>
-        <button className="p-2 -mr-2 text-white hover:text-gray-300 transition-colors">
+        <button
+          onClick={handleMockClick}
+          className="cursor-default p-2 -mr-2 text-white opacity-70"
+        >
           <Menu className="w-6 h-6" />
         </button>
       </header>
@@ -82,7 +86,11 @@ export function ChatInterfaceNotice({ onSummonAgent, onBack, isParsing = false }
 请提前15分钟微信签到入场。满10次计两个创新学分，先到先得。
 比赛通知链接：`}
               </p>
-              <a href="#" className="text-[#5b9bd5] text-[15px] leading-relaxed underline block break-all">
+              <a
+                href="#"
+                onClick={handleMockClick}
+                className="text-[#5b9bd5] text-[15px] leading-relaxed underline block break-all opacity-80"
+              >
                 {`https://***.edu.cn/${currentYear}/0421/***`}
               </a>
             </div>
@@ -137,20 +145,31 @@ export function ChatInterfaceNotice({ onSummonAgent, onBack, isParsing = false }
       {/* Input area - QQ style */}
       <div className="p-3 bg-[#111111] border-t border-[#2a2a2a]">
         <div className="flex items-center gap-3">
-          <button className="text-gray-400 hover:text-white transition-colors">
+          <button
+            onClick={handleMockClick}
+            className="cursor-default text-gray-400 opacity-70"
+          >
             <Mic className="w-6 h-6" />
           </button>
           <div className="flex-1 bg-[#2a2a2a] rounded-full px-4 py-2">
             <input 
               type="text"
               placeholder=""
-              className="w-full bg-transparent text-white text-sm outline-none"
+              readOnly
+              onClick={handleMockClick}
+              className="w-full cursor-default bg-transparent text-sm text-white outline-none"
             />
           </div>
-          <button className="text-gray-400 hover:text-white transition-colors">
+          <button
+            onClick={handleMockClick}
+            className="cursor-default text-gray-400 opacity-70"
+          >
             <Smile className="w-6 h-6" />
           </button>
-          <button className="text-gray-400 hover:text-white transition-colors">
+          <button
+            onClick={handleMockClick}
+            className="cursor-default text-gray-400 opacity-70"
+          >
             <Plus className="w-6 h-6" />
           </button>
         </div>

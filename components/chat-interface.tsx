@@ -2,6 +2,7 @@
 
 import { ArrowLeft, Menu, Mic, Smile, Plus } from "lucide-react"
 import { useTaskStore } from "@/hooks/use-task-store"
+import { handleMockClick } from "@/lib/demo-feedback"
 import { SECURITY_MESSAGE_IDS } from "@/lib/group-parse-inputs"
 import { cn } from "@/lib/utils"
 import { StatusBar } from "./status-bar"
@@ -43,7 +44,10 @@ export function ChatInterface({ onSummonAgent, onBack, isParsing = false }: Chat
             <span className="text-[8px] text-white">◎</span>
           </div>
         </div>
-        <button className="p-2 -mr-2 text-white hover:text-gray-300 transition-colors">
+        <button
+          onClick={handleMockClick}
+          className="cursor-default p-2 -mr-2 text-white opacity-70"
+        >
           <Menu className="w-6 h-6" />
         </button>
       </header>
@@ -95,12 +99,23 @@ export function ChatInterface({ onSummonAgent, onBack, isParsing = false }: Chat
               <p className="text-white text-[15px] leading-relaxed mt-4">
                 点击链接入会，或添加至会议列表：
               </p>
-              <a href="#" className="text-[#5b9bd5] text-[15px] leading-relaxed underline block break-all">
+              <a
+                href="#"
+                onClick={handleMockClick}
+                className="text-[#5b9bd5] text-[15px] leading-relaxed underline block break-all opacity-80"
+              >
                 https://meeting.tencent.com/dm/xxxx
               </a>
               
               <p className="text-white text-[15px] leading-relaxed mt-3">
-                #腾讯会议：<a href="#" className="text-[#5b9bd5] underline">xxx-xxx-xxx</a>
+                #腾讯会议：
+                <a
+                  href="#"
+                  onClick={handleMockClick}
+                  className="text-[#5b9bd5] underline opacity-80"
+                >
+                  xxx-xxx-xxx
+                </a>
               </p>
               
               <p className="text-white text-[15px] leading-relaxed mt-3">
@@ -213,20 +228,31 @@ export function ChatInterface({ onSummonAgent, onBack, isParsing = false }: Chat
       {/* Input area - QQ style */}
       <div className="p-3 bg-[#111111] border-t border-[#2a2a2a]">
         <div className="flex items-center gap-3">
-          <button className="text-gray-400 hover:text-white transition-colors">
+          <button
+            onClick={handleMockClick}
+            className="cursor-default text-gray-400 opacity-70"
+          >
             <Mic className="w-6 h-6" />
           </button>
           <div className="flex-1 bg-[#2a2a2a] rounded-full px-4 py-2">
             <input 
               type="text"
               placeholder=""
-              className="w-full bg-transparent text-white text-sm outline-none"
+              readOnly
+              onClick={handleMockClick}
+              className="w-full cursor-default bg-transparent text-sm text-white outline-none"
             />
           </div>
-          <button className="text-gray-400 hover:text-white transition-colors">
+          <button
+            onClick={handleMockClick}
+            className="cursor-default text-gray-400 opacity-70"
+          >
             <Smile className="w-6 h-6" />
           </button>
-          <button className="text-gray-400 hover:text-white transition-colors">
+          <button
+            onClick={handleMockClick}
+            className="cursor-default text-gray-400 opacity-70"
+          >
             <Plus className="w-6 h-6" />
           </button>
         </div>

@@ -4,6 +4,7 @@
 import { Search, MessageSquare, Hash, Users, Activity, Bell, BellOff, Mail, MailOpen } from "lucide-react"
 import { StatusBar } from "./status-bar"
 import { useTaskStore } from "@/hooks/use-task-store"
+import { handleMockClick } from "@/lib/demo-feedback"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -145,7 +146,12 @@ export function ChatList({ onSelectGroup, chatStates, setChatStates }: ChatListP
             </div>
           </div>
         </div>
-        <button className="text-white text-2xl font-light">+</button>
+        <button
+          onClick={handleMockClick}
+          className="cursor-default text-2xl font-light text-white opacity-70"
+        >
+          +
+        </button>
       </div>
 
       {/* Search Bar */}
@@ -258,19 +264,31 @@ export function ChatList({ onSelectGroup, chatStates, setChatStates }: ChatListP
 
       {/* Bottom Navigation */}
       <div className="flex items-center justify-around py-3 bg-[#111111] border-t border-[#2a2a2a]">
-        <button className="flex flex-col items-center gap-1 text-[#0099FF]">
+        <button
+          onClick={handleMockClick}
+          className="flex cursor-default flex-col items-center gap-1 text-[#0099FF] opacity-80"
+        >
           <MessageSquare className="w-5 h-5" />
           <span className="text-[10px]">消息</span>
         </button>
-        <button className="flex flex-col items-center gap-1 text-gray-500">
+        <button
+          onClick={handleMockClick}
+          className="flex cursor-default flex-col items-center gap-1 text-gray-500 opacity-70"
+        >
           <Hash className="w-5 h-5" />
           <span className="text-[10px]">频道</span>
         </button>
-        <button className="flex flex-col items-center gap-1 text-gray-500">
+        <button
+          onClick={handleMockClick}
+          className="flex cursor-default flex-col items-center gap-1 text-gray-500 opacity-70"
+        >
           <Users className="w-5 h-5" />
           <span className="text-[10px]">联系人</span>
         </button>
-        <button className="flex flex-col items-center gap-1 text-gray-500">
+        <button
+          onClick={handleMockClick}
+          className="flex cursor-default flex-col items-center gap-1 text-gray-500 opacity-70"
+        >
           <Activity className="w-5 h-5" />
           <span className="text-[10px]">动态</span>
         </button>

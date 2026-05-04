@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { ArrowLeft, Menu, Mic, Smile, Plus, Check, MapPin, Sparkles, Lightbulb, X, Send, Trash2, Edit3, ChevronDown, Pencil, StickyNote, Calendar, School, Loader2, Download, Settings, Inbox, ArrowRight, Clock, MessageSquare, CalendarDays, ChevronLeft, ChevronRight, Bell } from "lucide-react"
 import { aiTaskToStoreTask, buildAiContext, callBugeAi, createChatRouteRequest } from "@/lib/ai/client"
 import { addMinutesToTime, normalizeAiTask } from "@/lib/ai/date"
+import { handleMockClick } from "@/lib/demo-feedback"
 import type { AiAgentCommand, AiTask } from "@/lib/ai/types"
 import { useTaskStore, Task, checkTaskConflict, checkTaskBufferWarning, getOverlappingTaskIds, hasTimeOverlap, isSameTaskIdentity } from "@/hooks/use-task-store"
 import { useCourseStore, Course, checkCourseConflict, checkCourseBufferWarning } from "@/hooks/use-course-store"
@@ -1332,7 +1333,10 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
 
         {/* Input Row */}
         <div className="flex items-center gap-3">
-          <button className="p-2 text-gray-400 hover:text-white transition-colors">
+          <button
+            onClick={handleMockClick}
+            className="cursor-default p-2 text-gray-400 opacity-70"
+          >
             <Mic className="w-6 h-6" />
           </button>
           <div className="flex-1 bg-[#2a2a2a] rounded-full px-4 py-2 flex items-center">
@@ -1354,10 +1358,16 @@ export function ChatInterfaceBuge({ onBack, initialSelectedDate }: ChatInterface
               </button>
             )}
           </div>
-          <button className="p-2 text-gray-400 hover:text-white transition-colors">
+          <button
+            onClick={handleMockClick}
+            className="cursor-default p-2 text-gray-400 opacity-70"
+          >
             <Smile className="w-6 h-6" />
           </button>
-          <button className="p-2 text-gray-400 hover:text-white transition-colors">
+          <button
+            onClick={handleMockClick}
+            className="cursor-default p-2 text-gray-400 opacity-70"
+          >
             <Plus className="w-6 h-6" />
           </button>
         </div>
